@@ -97,6 +97,22 @@ def pdf_individual():
     )
 
 
+@app.route("/api/jugadores-stats", methods=["POST"])
+def jugadores_stats():
+    try:
+        dfs = leer_todos(request)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    jugadores = sorted({j for df in dfs for j in sc.detectar_jugadores(df)})
+    out = {}
+    for j in jugadores:
+        inds = [sc.estadisticas_individuales(df, j) for df in dfs]
+        inds = [i for i in inds if i]
+        if inds:
+            out[j] = sc.combinar_individuales(inds)
+    return jsonify(out)
+
+
 @app.route("/api/individual", methods=["POST"])
 def individual():
     jugador = request.form.get("jugador", "")
