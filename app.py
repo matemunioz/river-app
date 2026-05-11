@@ -1,0 +1,115 @@
+"""
+app.py — River Plate Videoanálisis · Backend Flask
+"""
+
+import io
+from pathlib import Path
+from flask import Flask, jsonify, render_template, request, send_file
+import parser as sc
+import pdf_gen as pg
+
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
+
+
+def leer_archivo(archivo):
+    nombre = archivo.filename or "archivo"
+    ext = Path(nombre).suffix.lower()
+    if ext not in [".csv", ".xlsx", ".xls"]:
+        raise ValueError(f"Formato no soportado: {ext}")
+    return sc.leer_desde_bytes(archivo.read(), ext)
+
+
+def leer_todos(req):
+    """Devuelve lista de DataFrames a partir de uno o más uploads bajo 'archivo'."""
+    files = req.files.getlist("archivo")
+    if not files:
+        raise ValueError("No se recibió archivo")
+    dfs = []
+    for f in files:
+        df = leer_archivo(f)
+        if "Row" not in df.columns:
+            raise ValueError(f"'{f.filename}' no tiene columna 'Row'. ¿Es un export de Sportcode?")
+        dfs.append(df)
+    return dfs
+
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+@app.route("/api/analizar", methods=["POST"])
+def analizar():
+    try:
+        dfs = leer_todos(request)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+    resultados = [sc.analizar_partido(df) for df in dfs]
+    return jsonify(sc.combinar_partidos(resultados))
+
+
+@app.route("/api/pdf/colectivo", methods=["POST"])
+def pdf_colectivo():
+    try:
+        dfs = leer_todos(request)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+    resultados = [sc.analizar_partido(df) for df in dfs]
+    agg = sc.combinar_partidos(resultados)
+
+    pdf_bytes = pg.generar_pdf_colectivo(
+        agg["colectivas"], agg["goles"], agg["minutos"], agg["cambios"]
+    )
+    partido = agg["colectivas"].get("partido", "partido")
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"Colectivo_{partido}.pdf",
+    )
+
+
+@app.route("/api/pdf/individual", methods=["POST"])
+def pdf_individual():
+    jugador = request.form.get("jugador", "")
+    if not jugador:
+        return jsonify({"error": "No se especificó jugador"}), 400
+    try:
+        dfs = leer_todos(request)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+    inds = [sc.estadisticas_individuales(df, jugador) for df in dfs]
+    ind = sc.combinar_individuales(inds)
+    resultados = [sc.analizar_partido(df) for df in dfs]
+    agg = sc.combinar_partidos(resultados)
+    partido = agg["colectivas"].get("partido", "partido")
+
+    pdf_bytes = pg.generar_pdf_individual(ind, partido, agg["minutos"])
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"Individual_{jugador}_{partido}.pdf",
+    )
+
+
+@app.route("/api/individual", methods=["POST"])
+def individual():
+    jugador = request.form.get("jugador", "")
+    if not jugador:
+        return jsonify({"error": "No se especificó jugador"}), 400
+    try:
+        dfs = leer_todos(request)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+    inds = [sc.estadisticas_individuales(df, jugador) for df in dfs]
+    return jsonify(sc.combinar_individuales(inds))
+
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
