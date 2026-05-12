@@ -727,6 +727,7 @@ def estadisticas_individuales(df: pd.DataFrame, jugador: str) -> dict:
         "recup_posic":      recup_posic,
         "recup_interv":     recup_interv,
         "recup_tras":       recup_tras,
+        "recup_total":      recup_posic + recup_interv + recup_tras,
         # pérdidas
         "perd_pase":        perd_pase,
         "perd_control":     perd_ctrl,
