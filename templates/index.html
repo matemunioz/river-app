@@ -395,6 +395,12 @@
     .part-chip input { accent-color: var(--rojo); cursor: pointer; }
     .part-chip:has(input:not(:checked)) { opacity: 0.45; }
     .part-chip:hover { border-color: var(--rojo); }
+    .part-chip-x {
+      border: none; background: transparent; color: var(--gris5);
+      font-size: 13px; font-weight: 700; cursor: pointer; padding: 0 2px;
+      margin-left: 2px; line-height: 1; transition: color .15s;
+    }
+    .part-chip-x:hover { color: var(--rojo); }
 
     /* SUB-TABS DENTRO DE INDIVIDUAL */
     .ind-subtabs { display: flex; gap: 0; border-bottom: 1px solid var(--gris4); margin-bottom: 1rem; }
@@ -720,8 +726,8 @@
        ondragover="ev(event,'over')" ondragleave="ev(event,'leave')" ondrop="ev(event,'drop')">
     <input type="file" id="fi" accept=".csv,.xlsx,.xls" multiple onchange="procesar(this.files)">
     <span class="drop-icon" id="drop-icon">📂</span>
-    <div class="drop-title">Seleccioná o arrastrá uno o varios exports de Sportcode</div>
-    <div class="drop-sub">CSV o XLSX · arrastrá múltiples partidos para acumular estadísticas</div>
+    <div class="drop-title">Seleccioná o arrastrá exports de Sportcode</div>
+    <div class="drop-sub">CSV o XLSX · podés sumar partidos de a uno o todos juntos · se acumulan</div>
   </div>
 
   <div id="status-bar">
@@ -857,9 +863,10 @@ function borrarCache() {
   archivosActuales = [];
   partidosSel = new Set();
   datosActuales = null;
+  datosJugadores = null;
   jugadorActivo = '';
   nombresPartidos = [];
-  tabActiva = 'comparativa';
+  tabActiva = 'individual';
   document.getElementById('results').innerHTML = '';
   document.getElementById('drop-icon').textContent = '📂';
   actualizarBarraCache();
@@ -910,16 +917,66 @@ function ev(e, tipo) {
 }
 
 async function procesar(files, opts = {}) {
-  const lista = Array.from(files || []);
-  if (!lista.length) return;
+  const entrantes = Array.from(files || []);
+  if (!entrantes.length) return;
+
+  let lista;
+  if (opts.fromCache) {
+    lista = entrantes;
+  } else {
+    // Sumar a los existentes (evitando duplicados por nombre)
+    const previos = archivosActuales || [];
+    const nombresPrev = new Set(previos.map(f => f.name));
+    const realmenteNuevos = entrantes.filter(f => !nombresPrev.has(f.name));
+    if (!realmenteNuevos.length && previos.length) {
+      // todos eran duplicados — avisar y salir
+      mostrarStatusBreve(`Ya tenías cargado: ${entrantes.map(f => f.name).join(', ')}`);
+      const fi = document.getElementById('fi'); if (fi) fi.value = '';
+      return;
+    }
+    lista = [...previos, ...realmenteNuevos];
+  }
+
+  const eraVacio = !archivosActuales.length;
   archivosActuales = lista;
   partidosSel = new Set(lista.map((_, i) => i));
   nombresPartidos = lista.map(f => f.name.replace(/\.(csv|xlsx|xls)$/i, ''));
-  tabActiva = 'individual';
-  jugadorActivo = '';
+  if (eraVacio || opts.fromCache) {
+    tabActiva = 'individual';
+    jugadorActivo = '';
+  }
   if (!opts.fromCache) guardarEnCache(lista);
   actualizarBarraCache();
+
+  // Reset input para permitir re-seleccionar el mismo archivo
+  const fi = document.getElementById('fi'); if (fi) fi.value = '';
+
   await analizarConFiltro({ mostrarStatus: true });
+}
+
+function mostrarStatusBreve(msg) {
+  const bar = document.getElementById('status-bar');
+  const m = document.getElementById('status-msg');
+  if (!bar || !m) return;
+  bar.style.display = 'flex';
+  m.textContent = msg;
+  setTimeout(() => { bar.style.display = 'none'; }, 2500);
+}
+
+function removerPartido(idx) {
+  if (!archivosActuales[idx]) return;
+  const nombre = archivosActuales[idx].name;
+  if (!confirm(`Quitar "${nombre}" del análisis?`)) return;
+  archivosActuales = archivosActuales.filter((_, i) => i !== idx);
+  if (!archivosActuales.length) {
+    borrarCache();
+    return;
+  }
+  partidosSel = new Set(archivosActuales.map((_, i) => i));
+  nombresPartidos = archivosActuales.map(f => f.name.replace(/\.(csv|xlsx|xls)$/i, ''));
+  guardarEnCache(archivosActuales);
+  actualizarBarraCache();
+  analizarConFiltro({ mostrarStatus: true });
 }
 
 function actualizarRangeBar() {
@@ -1115,16 +1172,20 @@ function renderResultados(d) {
     </div>
   </div>
 
-  ${archivosActuales.length > 1 ? `
+  ${archivosActuales.length >= 1 ? `
   <div id="part-filter" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:1.2rem;align-items:center">
     <span style="font-size:10px;color:var(--gris5);text-transform:uppercase;letter-spacing:.5px;margin-right:4px">Partidos:</span>
     ${archivosActuales.map((f,i) => `
       <label class="part-chip">
         <input type="checkbox" data-idx="${i}" ${partidosSel.has(i) ? 'checked' : ''} onchange="onPartidoToggle()">
         <span>${nombresPartidos[i] || f.name}</span>
+        <button class="part-chip-x" title="Quitar este partido" onclick="event.preventDefault();event.stopPropagation();removerPartido(${i})">×</button>
       </label>`).join('')}
-    <button class="btn" style="padding:4px 10px;font-size:11px" onclick="togglePartidos(true)">Todos</button>
-    <button class="btn" style="padding:4px 10px;font-size:11px" onclick="togglePartidos(false)">Ninguno</button>
+    ${archivosActuales.length > 1 ? `
+      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="togglePartidos(true)">Todos</button>
+      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="togglePartidos(false)">Ninguno</button>
+    ` : ''}
+    <button class="btn" style="padding:4px 10px;font-size:11px;border-color:var(--gris5)" onclick="document.getElementById('fi').click()">＋ Agregar partido</button>
   </div>` : ''}
 
   <div class="tiempo-filter">
