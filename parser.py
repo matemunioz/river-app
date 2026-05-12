@@ -16,6 +16,7 @@ CATS_PROPIAS = [
     "Transicion Ofensiva", "Transicion Defensiva",
     "Centros Propios", "Detenidas Propias",
     "Perdidas", "Recuperadas",
+    "Posesiones", "Chocar Pared", "Cortar Pared",
 ]
 
 CATS_RIVALES = [
@@ -32,22 +33,102 @@ COLS_MULTI = [
 
 UMBRAL_SEG = 300  # 5 min
 
+# ─── Cancha (Nacsport 120×80, ataque a la derecha) ───────────────────────────
+CANCHA_LARGO = 120
+CANCHA_ANCHO = 80
+AREA_X_MIN = 102          # último tramo antes del arco
+AREA_Y_MIN, AREA_Y_MAX = 18, 62
+ULTIMO_TERCIO_X = 80      # x ≥ 80 = último tercio
+PROGRESION_MIN = 10       # progresivo si avanza ≥ 10 metros en x
+
+
+# ─── Pre-procesado de coordenadas ────────────────────────────────────────────
+
+def _parse_coord(v):
+    """Devuelve (origen, destino). Acepta '64' o '64, 69'."""
+    if pd.isna(v):
+        return (None, None)
+    s = str(v).strip()
+    if "," in s:
+        parts = [p.strip() for p in s.split(",")]
+        try:
+            o = float(parts[0]) if parts[0] else None
+            d = float(parts[1]) if len(parts) > 1 and parts[1] else None
+            return (o, d)
+        except ValueError:
+            return (None, None)
+    try:
+        return (float(s), None)
+    except ValueError:
+        return (None, None)
+
+
+def _zona_x(x):
+    if x is None or pd.isna(x): return None
+    if x >= ULTIMO_TERCIO_X: return "alto"
+    if x >= 40: return "medio"
+    return "bajo"
+
+
+def _en_area(x, y):
+    if x is None or y is None or pd.isna(x) or pd.isna(y): return False
+    return x >= AREA_X_MIN and AREA_Y_MIN <= y <= AREA_Y_MAX
+
+
+def enriquecer_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Agrega columnas derivadas de coordenadas. Idempotente."""
+    if "x" in df.columns:
+        xs = df["x"].apply(_parse_coord)
+        df["x_start"] = [t[0] for t in xs]
+        df["x_end"]   = [t[1] for t in xs]
+    else:
+        df["x_start"] = df["x_end"] = None
+    if "y" in df.columns:
+        ys = df["y"].apply(_parse_coord)
+        df["y_start"] = [t[0] for t in ys]
+        df["y_end"]   = [t[1] for t in ys]
+    else:
+        df["y_start"] = df["y_end"] = None
+
+    df["x_start"] = pd.to_numeric(df["x_start"], errors="coerce")
+    df["y_start"] = pd.to_numeric(df["y_start"], errors="coerce")
+    df["x_end"]   = pd.to_numeric(df["x_end"], errors="coerce")
+    df["y_end"]   = pd.to_numeric(df["y_end"], errors="coerce")
+
+    df["zona_start"] = df["x_start"].apply(_zona_x)
+    df["zona_end"]   = df["x_end"].apply(_zona_x)
+    df["ultimo_tercio_start"] = df["x_start"] >= ULTIMO_TERCIO_X
+    df["ultimo_tercio_end"]   = df["x_end"]   >= ULTIMO_TERCIO_X
+    df["en_area_start"] = df.apply(lambda r: _en_area(r["x_start"], r["y_start"]), axis=1)
+    df["en_area_end"]   = df.apply(lambda r: _en_area(r["x_end"],   r["y_end"]),   axis=1)
+
+    df["progresion_x"] = df["x_end"] - df["x_start"]
+    df["distancia"]    = ((df["x_end"] - df["x_start"]) ** 2 +
+                          (df["y_end"] - df["y_start"]) ** 2) ** 0.5
+    df["progresivo"]   = df["progresion_x"] >= PROGRESION_MIN
+    return df
+
 
 # ─── I/O ─────────────────────────────────────────────────────────────────────
 
 def leer_desde_bytes(data: bytes, ext: str) -> pd.DataFrame:
     buf = io.BytesIO(data)
+    df = None
     if ext == ".csv":
         for enc in ["utf-8", "latin-1", "cp1252"]:
             try:
                 buf.seek(0)
-                return pd.read_csv(buf, encoding=enc)
+                df = pd.read_csv(buf, encoding=enc)
+                break
             except UnicodeDecodeError:
                 continue
-        raise ValueError("No se pudo leer el CSV.")
+        if df is None:
+            raise ValueError("No se pudo leer el CSV.")
     elif ext in [".xlsx", ".xls"]:
-        return pd.read_excel(buf)
-    raise ValueError(f"Formato no soportado: {ext}")
+        df = pd.read_excel(buf)
+    else:
+        raise ValueError(f"Formato no soportado: {ext}")
+    return enriquecer_df(df)
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -90,6 +171,22 @@ def nombre_partido(df: pd.DataFrame, fname: str = "") -> str:
 
 def _n(df, cat):
     return len(df[df["Row"] == cat])
+
+
+def _crosstab(df: pd.DataFrame, cat: str, col1: str, col2: str) -> dict:
+    """Tabla de contingencia col1 × col2 para filas de `cat`. Soporta multi-valor con comas."""
+    sub = df[df["Row"] == cat]
+    if sub.empty or col1 not in sub.columns or col2 not in sub.columns:
+        return {}
+    out = {}
+    for _, r in sub[[col1, col2]].dropna().iterrows():
+        v1s = [x.strip() for x in str(r[col1]).split(",") if x.strip()]
+        v2s = [x.strip() for x in str(r[col2]).split(",") if x.strip()]
+        for v1 in v1s:
+            for v2 in v2s:
+                out.setdefault(v1, {}).setdefault(v2, 0)
+                out[v1][v2] += 1
+    return out
 
 
 def calcular_colectivas(df: pd.DataFrame) -> dict:
@@ -185,6 +282,10 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
         "recuperadas":    _n(df, "Recuperadas"),
         "corners_prop":   corners_p,
         "corners_riv":    corners_r,
+        # Matrices cruzadas — para análisis de carril/tipo
+        "matriz_llegadas":     _crosstab(df, "Llegadas Propias",       "Tipo de Jugada", "Finalización"),
+        "matriz_amp_carril":   _crosstab(df, "Llegadas Propias",       "Amplitud",       "Finalización"),
+        "matriz_sit_gol":      _crosstab(df, "Situaciones de Gol Propias", "Tipo de Jugada", "Finalización"),
     }
 
 
@@ -366,6 +467,25 @@ def combinar_individuales(lista: list) -> dict:
     out["pases_efect"] = round(out.get("pases_completos", 0) / p_tot * 100) if p_tot else 0
     if isinstance(out.get("minutos"), float):
         out["minutos"] = round(out["minutos"], 1)
+
+    # Recalcular derivados posicionales desde las sumas crudas
+    n_xy = out.get("acciones_xy", 0)
+    if n_xy:
+        sx, sy = out.get("_sum_x", 0), out.get("_sum_y", 0)
+        sx2, sy2 = out.get("_sum_x2", 0), out.get("_sum_y2", 0)
+        out["centro_grav_x"] = round(sx / n_xy, 1)
+        out["centro_grav_y"] = round(sy / n_xy, 1)
+        var_x = sx2 / n_xy - (sx / n_xy) ** 2
+        var_y = sy2 / n_xy - (sy / n_xy) ** 2
+        out["dispersion_x"] = round(var_x ** 0.5, 1) if var_x > 0 else 0
+        out["dispersion_y"] = round(var_y ** 0.5, 1) if var_y > 0 else 0
+        out["pct_ultimo_tercio"] = round(out.get("acciones_ult3", 0) / n_xy * 100)
+        out["pct_area"] = round(out.get("acciones_area", 0) / n_xy * 100)
+    n_dest = out.get("acciones_destino", 0)
+    if n_dest:
+        out["progresion_media"] = round(out.get("_sum_prog", 0) / n_dest, 1)
+        out["distancia_media"] = round(out.get("_sum_dist", 0) / n_dest, 1)
+        out["pct_progresivo"] = round(out.get("acciones_progresivas", 0) / n_dest * 100)
     return out
 
 
@@ -518,6 +638,33 @@ def estadisticas_individuales(df: pd.DataFrame, jugador: str) -> dict:
         if "POSITIVO" in t: positivos += 1
         if "NEGATIVO" in t: negativos += 1
 
+    # ── MÉTRICAS POSICIONALES (desde x,y) ────────────────────────────────
+    con_xy = sub[sub["x_start"].notna() & sub["y_start"].notna()]
+    n_xy = len(con_xy)
+    sum_x = float(con_xy["x_start"].sum()) if n_xy else 0
+    sum_y = float(con_xy["y_start"].sum()) if n_xy else 0
+    sum_x2 = float((con_xy["x_start"] ** 2).sum()) if n_xy else 0
+    sum_y2 = float((con_xy["y_start"] ** 2).sum()) if n_xy else 0
+    n_ult = int(con_xy["ultimo_tercio_start"].sum()) if n_xy else 0
+    n_area = int(con_xy["en_area_start"].sum()) if n_xy else 0
+    cg_x = round(sum_x / n_xy, 1) if n_xy else 0
+    cg_y = round(sum_y / n_xy, 1) if n_xy else 0
+    var_x = (sum_x2 / n_xy - (sum_x / n_xy) ** 2) if n_xy else 0
+    var_y = (sum_y2 / n_xy - (sum_y / n_xy) ** 2) if n_xy else 0
+    disp_x = round(var_x ** 0.5, 1) if var_x > 0 else 0
+    disp_y = round(var_y ** 0.5, 1) if var_y > 0 else 0
+    pct_ult = round(n_ult / n_xy * 100) if n_xy else 0
+    pct_area = round(n_area / n_xy * 100) if n_xy else 0
+
+    con_destino = sub[sub["x_start"].notna() & sub["x_end"].notna()]
+    n_dest = len(con_destino)
+    sum_prog = float(con_destino["progresion_x"].sum()) if n_dest else 0
+    sum_dist = float(con_destino["distancia"].sum()) if n_dest else 0
+    n_prog = int(con_destino["progresivo"].sum()) if n_dest else 0
+    prog_media = round(sum_prog / n_dest, 1) if n_dest else 0
+    dist_media = round(sum_dist / n_dest, 1) if n_dest else 0
+    pct_prog = round(n_prog / n_dest * 100) if n_dest else 0
+
     p_total = p_compl + p_incompl
     p_efect = round(p_compl / p_total * 100) if p_total else 0
 
@@ -607,4 +754,26 @@ def estadisticas_individuales(df: pd.DataFrame, jugador: str) -> dict:
         "faltas_hec":       falta_hec,
         "positivos":        positivos,
         "negativos":        negativos,
+        # posicionales (derivados)
+        "acciones_xy":      n_xy,
+        "centro_grav_x":    cg_x,
+        "centro_grav_y":    cg_y,
+        "dispersion_x":     disp_x,
+        "dispersion_y":     disp_y,
+        "pct_ultimo_tercio": pct_ult,
+        "pct_area":         pct_area,
+        "acciones_area":    n_area,
+        "acciones_ult3":    n_ult,
+        "acciones_destino": n_dest,
+        "progresion_media": prog_media,
+        "distancia_media":  dist_media,
+        "pct_progresivo":   pct_prog,
+        "acciones_progresivas": n_prog,
+        # posicionales (sumas crudas, para combinar entre partidos)
+        "_sum_x":  sum_x,
+        "_sum_y":  sum_y,
+        "_sum_x2": sum_x2,
+        "_sum_y2": sum_y2,
+        "_sum_prog": sum_prog,
+        "_sum_dist": sum_dist,
     }

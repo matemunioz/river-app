@@ -351,6 +351,28 @@
       border-bottom: 1px solid var(--gris3);
     }
     .ind-block-title.sub { color: var(--gris5); margin-top: 16px; border-bottom: none; padding-bottom: 4px; }
+    /* Tooltip de ayuda */
+    .info-dot {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--gris3); border: 1px solid var(--gris4);
+      color: var(--gris5); font-size: 9px; font-weight: 700;
+      margin-left: 6px; cursor: help; position: relative;
+    }
+    .info-dot:hover { color: var(--rojo); border-color: var(--rojo); }
+    .info-dot::after {
+      content: attr(data-tip);
+      position: absolute; bottom: calc(100% + 8px); left: 50%;
+      transform: translateX(-50%);
+      background: var(--negro); color: var(--blanco);
+      border: 1px solid var(--rojo); border-radius: 6px;
+      padding: 8px 10px; font-size: 11px; font-weight: 400;
+      white-space: normal; width: 240px; text-align: left; line-height: 1.4;
+      opacity: 0; pointer-events: none; transition: opacity .15s;
+      z-index: 1000; box-shadow: 0 6px 20px rgba(0,0,0,.6);
+    }
+    .info-dot:hover::after { opacity: 1; }
+
     .ind-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--gris3); }
     .ind-row:last-child { border-bottom: none; }
     .ind-row-label { font-size: 11px; color: var(--grisc); }
@@ -435,6 +457,250 @@
     .scatter-dot { cursor: pointer; transition: r .15s; }
     .scatter-dot:hover { r: 8; }
 
+    /* BLOQUE LECTURA — insights automáticos */
+    .lectura {
+      background: linear-gradient(135deg, var(--gris1) 0%, rgba(204,0,0,0.04) 100%);
+      border: 1px solid var(--gris3);
+      border-left: 3px solid var(--rojo);
+      border-radius: 10px;
+      padding: 1.2rem 1.4rem;
+      margin-top: 1.5rem;
+    }
+    .lectura-title {
+      font-size: 11px; font-weight: 700; letter-spacing: 1.2px;
+      text-transform: uppercase; color: var(--rojo);
+      margin-bottom: .8rem;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .lectura ul { list-style: none; }
+    .lectura li {
+      font-size: 13px; line-height: 1.55; color: var(--blanco);
+      padding: 6px 0 6px 16px; position: relative;
+    }
+    .lectura li::before {
+      content: '▸'; color: var(--rojo); position: absolute; left: 0; top: 5px;
+      font-size: 10px;
+    }
+    .lectura li b { color: var(--rojo); font-weight: 700; }
+    .lectura li i { color: var(--ambar); font-style: normal; font-weight: 600; }
+
+    /* FODA del jugador */
+    .foda-summary {
+      font-size: 13px; color: var(--blanco); line-height: 1.5;
+      padding: 6px 0 14px 16px; border-bottom: 1px solid var(--gris3);
+      margin-bottom: 14px; position: relative;
+    }
+    .foda-summary::before {
+      content: '▸'; color: var(--rojo); position: absolute; left: 0; top: 6px; font-size: 10px;
+    }
+    .foda-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    }
+    @media (max-width: 720px) { .foda-grid { grid-template-columns: 1fr; } }
+    .foda-box {
+      padding: 12px 14px; border-radius: 8px;
+      background: var(--gris2); border: 1px solid var(--gris3);
+      border-left-width: 3px;
+    }
+    .foda-box.f { border-left-color: var(--verde); }
+    .foda-box.o { border-left-color: var(--azul); }
+    .foda-box.d { border-left-color: var(--ambar); }
+    .foda-box.a { border-left-color: var(--rojo); }
+    .foda-box-title {
+      font-size: 10px; font-weight: 700; letter-spacing: 1px;
+      text-transform: uppercase; margin-bottom: 8px;
+    }
+    .foda-box.f .foda-box-title { color: var(--verde); }
+    .foda-box.o .foda-box-title { color: var(--azul); }
+    .foda-box.d .foda-box-title { color: var(--ambar); }
+    .foda-box.a .foda-box-title { color: var(--rojo); }
+    .foda-box ul { list-style: none; }
+    .foda-box li {
+      font-size: 12px; line-height: 1.45; color: var(--blanco);
+      padding: 4px 0; display: flex; justify-content: space-between; gap: 8px;
+    }
+    .foda-box li .v { font-weight: 700; color: var(--grisc); font-size: 11px; white-space: nowrap; }
+    .foda-empty { font-size: 11px; color: var(--gris5); font-style: italic; padding: 4px 0; }
+
+    /* FILTRO TEMPORAL — dual range */
+    .tiempo-filter {
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+      background: var(--gris2); border: 1px solid var(--gris4);
+      border-radius: 10px; padding: 10px 14px;
+      margin-bottom: 1.2rem;
+    }
+    .tiempo-filter > label {
+      font-size: 10px; color: var(--gris5);
+      text-transform: uppercase; letter-spacing: .8px; font-weight: 700;
+      margin-right: 2px;
+    }
+    .dual-range {
+      position: relative; flex: 1; min-width: 240px; height: 28px;
+    }
+    .dual-range .track {
+      position: absolute; top: 50%; left: 0; right: 0; height: 4px;
+      background: var(--gris4); border-radius: 2px;
+      transform: translateY(-50%);
+    }
+    .dual-range .range {
+      position: absolute; top: 50%; height: 4px;
+      background: linear-gradient(90deg, var(--rojo2), var(--rojo));
+      border-radius: 2px; transform: translateY(-50%);
+    }
+    .dual-range input[type=range] {
+      position: absolute; top: 0; left: 0; width: 100%; height: 28px;
+      background: transparent; appearance: none; pointer-events: none;
+    }
+    .dual-range input[type=range]::-webkit-slider-thumb {
+      pointer-events: auto; appearance: none;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: var(--rojo); border: 2px solid #fff; cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,.4);
+    }
+    .dual-range input[type=range]::-moz-range-thumb {
+      pointer-events: auto;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--rojo); border: 2px solid #fff; cursor: pointer;
+    }
+    .tiempo-vals {
+      font-size: 12px; color: var(--blanco); font-weight: 700;
+      font-variant-numeric: tabular-nums; min-width: 90px; text-align: center;
+    }
+    .tiempo-presets { display: flex; gap: 4px; }
+    .tiempo-presets button {
+      padding: 5px 10px; font-size: 11px; border: 1px solid var(--gris4);
+      background: var(--gris3); color: var(--blanco); cursor: pointer;
+      border-radius: 14px; font-weight: 600;
+    }
+    .tiempo-presets button:hover { border-color: var(--rojo); }
+    .tiempo-presets button.active { background: var(--rojo); border-color: var(--rojo); }
+
+    /* EFICIENCIA + MATRIZ DE LLEGADAS */
+    .efic-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px; margin-bottom: 1.2rem;
+    }
+    .efic-card {
+      background: var(--gris2); border: 1px solid var(--gris3);
+      border-radius: 10px; padding: 14px 16px;
+    }
+    .efic-label { font-size: 10px; color: var(--gris5); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 4px; }
+    .efic-val   { font-size: 28px; font-weight: 800; line-height: 1; letter-spacing: -.5px; }
+    .efic-sub   { font-size: 10px; color: var(--gris5); margin-top: 4px; }
+    .efic-val.red   { color: var(--rojo); }
+    .efic-val.amber { color: var(--ambar); }
+    .efic-val.green { color: var(--verde); }
+
+    .matriz-wrap {
+      background: var(--gris1); border: 1px solid var(--gris3);
+      border-radius: 10px; padding: 1.2rem 1.4rem;
+    }
+    .matriz {
+      width: 100%; border-collapse: separate; border-spacing: 3px;
+    }
+    .matriz th, .matriz td {
+      padding: 10px 8px; text-align: center; font-size: 12px;
+      border-radius: 6px;
+    }
+    .matriz th {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+      color: var(--gris5); font-weight: 700; background: transparent;
+    }
+    .matriz th.row-head { text-align: right; padding-right: 12px; color: var(--blanco); }
+    .matriz td {
+      background: var(--gris2); color: var(--blanco); font-weight: 700;
+      position: relative; transition: background .15s;
+    }
+    .matriz td .v { font-size: 16px; font-weight: 800; }
+    .matriz td .p { display: block; font-size: 9px; color: var(--gris5); margin-top: 2px; }
+
+    /* CANCHA 2D + HEATMAP */
+    .pitch-section {
+      background: var(--gris1); border: 1px solid var(--gris3);
+      border-radius: 12px; padding: 1.5rem 1.6rem;
+      margin: 1.2rem 0;
+    }
+    .pitch-head {
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 12px; margin-bottom: 1rem;
+    }
+    .pitch-svg {
+      width: 100%; height: auto;
+      max-width: 540px;
+      display: block; margin: 0 auto;
+      background: #141414; border-radius: 8px;
+    }
+    .pitch-modos {
+      display: inline-flex; gap: 3px; background: var(--gris2);
+      border: 1px solid var(--gris4); border-radius: 6px; padding: 3px;
+    }
+    .pitch-modos button {
+      padding: 4px 10px; font-size: 10px; border: none;
+      background: transparent; color: var(--gris5); cursor: pointer;
+      border-radius: 4px; font-weight: 600;
+    }
+    .pitch-modos button.active { background: var(--rojo); color: white; }
+    .pitch-leyenda {
+      display: flex; gap: 16px; justify-content: center;
+      font-size: 10px; color: var(--gris5); margin-top: 10px;
+    }
+
+    /* PERFIL VISUAL (pizza + beeswarm) */
+    .perfil-visual {
+      background: var(--gris1); border: 1px solid var(--gris3);
+      border-radius: 12px; padding: 1.5rem 1.6rem;
+      margin: 1.2rem 0; display: grid; gap: 1.5rem;
+      grid-template-columns: minmax(380px, 1fr) 1.3fr;
+      align-items: start;
+    }
+    @media (max-width: 900px) { .perfil-visual { grid-template-columns: 1fr; } }
+    .perfil-titulo {
+      font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
+      text-transform: uppercase; color: var(--rojo); margin-bottom: 10px;
+    }
+    .estilo-badge {
+      background: linear-gradient(135deg, var(--rojo2), var(--rojo));
+      border-radius: 10px; padding: 14px 16px; margin-bottom: 14px;
+      text-align: center; box-shadow: 0 4px 18px rgba(204,0,0,.25);
+    }
+    .estilo-badge .ico { font-size: 28px; line-height: 1; margin-bottom: 4px; }
+    .estilo-badge .nombre { font-size: 16px; font-weight: 800; color: white; letter-spacing: -.2px; }
+    .estilo-badge .detalle { font-size: 10px; color: rgba(255,255,255,.75); margin-top: 4px; letter-spacing: .3px; }
+    .estilo-badge.mixto { background: var(--gris2); border: 1px solid var(--gris4); box-shadow: none; }
+    .estilo-badge.mixto .nombre { color: var(--gris5); }
+    .estilo-badge.mixto .detalle { color: var(--gris5); }
+    .perfil-leyenda {
+      display: flex; gap: 16px; justify-content: center;
+      font-size: 10px; color: var(--gris5); margin-top: 12px;
+    }
+    .perfil-leyenda span::before {
+      content: ''; display: inline-block; width: 9px; height: 9px;
+      border-radius: 2px; margin-right: 5px; vertical-align: middle;
+    }
+    .perfil-leyenda .lg-top::before    { background: var(--verde); }
+    .perfil-leyenda .lg-medio::before  { background: var(--ambar); }
+    .perfil-leyenda .lg-bajo::before   { background: var(--rojo); }
+
+    .beeswarm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+    .beeswarm-svg { background: var(--gris2); border: 1px solid var(--gris3); border-radius: 6px; width: 100%; height: auto; }
+
+    /* ANÁLISIS DEL JUGADOR (párrafo) */
+    .analisis-jug {
+      margin-top: 18px;
+      background: linear-gradient(135deg, var(--gris2), rgba(204,0,0,0.05));
+      border: 1px solid var(--gris3); border-left: 3px solid var(--rojo);
+      border-radius: 8px; padding: 14px 16px;
+    }
+    .analisis-jug-titulo {
+      font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
+      text-transform: uppercase; color: var(--rojo); margin-bottom: 8px;
+    }
+    .analisis-jug p {
+      font-size: 13px; line-height: 1.6; color: var(--blanco);
+    }
+    .analisis-jug p b { color: var(--rojo); font-weight: 700; }
+    .analisis-jug p i { color: var(--ambar); font-style: normal; font-weight: 600; }
+
     .error-box { background: rgba(204,0,0,.1); border: 1px solid var(--rojo); border-radius: 6px; padding: 10px 14px; color: var(--rojo); font-size: 12px; margin-top: 1rem; }
   </style>
 </head>
@@ -475,7 +741,7 @@ let archivosActuales = [];
 let datosActuales = null;
 let nombresPartidos = [];
 let partidosSel = new Set();
-let tabActiva = 'comparativa';
+let tabActiva = 'individual';
 let jugadorActivo = '';
 let vistaInd = 'jugador';
 let modoColectivo = 'suma';
@@ -483,6 +749,9 @@ let jugadoresSel = new Set();
 let datosJugadores = null;
 let xMetric = 'pases_total';
 let yMetric = 'pases_efect';
+let tMinMin = 0;     // minutos
+let tMaxMin = 90;    // minutos
+let tiempoTimer = null;
 let chartType = 'scatter';
 let radarMetrics = ['pases_efect', 'remates_arco', 'recup_posic', 'toques_area', 'dao_plus'];
 
@@ -520,6 +789,16 @@ const METRICAS = [
   ['despeje_or', 'Despejes orientados'],
   ['faltas_rec', 'Faltas recibidas'],
   ['faltas_hec', 'Faltas hechas'],
+  ['acciones_xy', 'Acciones con coord.'],
+  ['centro_grav_x', 'Centro gravedad X'],
+  ['centro_grav_y', 'Centro gravedad Y'],
+  ['dispersion_x', 'Dispersión X'],
+  ['dispersion_y', 'Dispersión Y'],
+  ['pct_ultimo_tercio', '% Último tercio'],
+  ['pct_area', '% Área rival'],
+  ['pct_progresivo', '% Acciones progresivas'],
+  ['progresion_media', 'Progresión media (m)'],
+  ['distancia_media', 'Distancia media (m)'],
 ];
 
 const STORAGE_KEY = 'river_csvs_v1';
@@ -589,6 +868,37 @@ function borrarCache() {
 window.addEventListener('DOMContentLoaded', () => {
   const stored = cargarDeCache();
   if (stored.length) procesar(stored, { fromCache: true });
+
+  // Tooltip flotante para la cancha (instantáneo, sin delay nativo)
+  const tip = document.createElement('div');
+  tip.id = 'pitch-tooltip';
+  tip.style.cssText =
+    'position:fixed;background:#0a0a0a;color:#fff;border:1px solid #CC0000;' +
+    'border-radius:6px;padding:6px 10px;font-size:11px;font-weight:500;' +
+    'line-height:1.4;pointer-events:none;z-index:10000;display:none;' +
+    'box-shadow:0 6px 20px rgba(0,0,0,.6);max-width:280px';
+  document.body.appendChild(tip);
+
+  document.addEventListener('mouseover', e => {
+    const g = e.target.closest && e.target.closest('[data-tip]');
+    if (!g) return;
+    tip.textContent = g.getAttribute('data-tip');
+    tip.style.display = 'block';
+  });
+  document.addEventListener('mousemove', e => {
+    if (tip.style.display === 'none') return;
+    const x = e.clientX + 14, y = e.clientY + 14;
+    const maxX = window.innerWidth - tip.offsetWidth - 8;
+    tip.style.left = Math.min(x, maxX) + 'px';
+    tip.style.top  = y + 'px';
+  });
+  document.addEventListener('mouseout', e => {
+    const g = e.target.closest && e.target.closest('[data-tip]');
+    if (!g) return;
+    const rel = e.relatedTarget;
+    if (rel && rel.closest && rel.closest('[data-tip]') === g) return;
+    tip.style.display = 'none';
+  });
 });
 
 function ev(e, tipo) {
@@ -605,11 +915,55 @@ async function procesar(files, opts = {}) {
   archivosActuales = lista;
   partidosSel = new Set(lista.map((_, i) => i));
   nombresPartidos = lista.map(f => f.name.replace(/\.(csv|xlsx|xls)$/i, ''));
-  tabActiva = 'comparativa';
+  tabActiva = 'individual';
   jugadorActivo = '';
   if (!opts.fromCache) guardarEnCache(lista);
   actualizarBarraCache();
   await analizarConFiltro({ mostrarStatus: true });
+}
+
+function actualizarRangeBar() {
+  const bar = document.getElementById('tiempo-range');
+  const vals = document.getElementById('tiempo-vals');
+  if (bar) {
+    const a = (tMinMin / 90) * 100;
+    const b = (tMaxMin / 90) * 100;
+    bar.style.left  = a + '%';
+    bar.style.width = (b - a) + '%';
+  }
+  if (vals) vals.textContent = `${tMinMin}' – ${tMaxMin}'`;
+}
+
+function onTiempo(thumb) {
+  const a = parseInt(document.getElementById('t-min').value) || 0;
+  const b = parseInt(document.getElementById('t-max').value) || 90;
+  if (thumb === 'min' && a > b) {
+    tMinMin = b; tMaxMin = b;
+    document.getElementById('t-min').value = b;
+  } else if (thumb === 'max' && b < a) {
+    tMaxMin = a; tMinMin = a;
+    document.getElementById('t-max').value = a;
+  } else {
+    tMinMin = a; tMaxMin = b;
+  }
+  actualizarRangeBar();
+  if (tiempoTimer) clearTimeout(tiempoTimer);
+  tiempoTimer = setTimeout(() => analizarConFiltro(), 250);
+}
+
+function presetTiempo(a, b) {
+  tMinMin = a; tMaxMin = b;
+  const mi = document.getElementById('t-min'), ma = document.getElementById('t-max');
+  if (mi) mi.value = a;
+  if (ma) ma.value = b;
+  actualizarRangeBar();
+  analizarConFiltro();
+}
+
+function fdTiempo(fd) {
+  if (tMinMin > 0)  fd.append('t_min', String(tMinMin * 60));
+  if (tMaxMin < 90) fd.append('t_max', String(tMaxMin * 60));
+  return fd;
 }
 
 async function analizarConFiltro({ mostrarStatus = false } = {}) {
@@ -636,6 +990,7 @@ async function analizarConFiltro({ mostrarStatus = false } = {}) {
 
   const fd = new FormData();
   idxs.forEach(i => fd.append('archivo', archivosActuales[i]));
+  fdTiempo(fd);
 
   try {
     const r = await fetch('/api/analizar', { method: 'POST', body: fd });
@@ -648,6 +1003,17 @@ async function analizarConFiltro({ mostrarStatus = false } = {}) {
     document.getElementById('status-bar').style.display = 'none';
     document.getElementById('drop-icon').textContent = '✅';
     renderResultados(data);
+    // Precarga del plantel + selección automática del jugador más destacado
+    fetchJugadoresStats().then(ds => {
+      if (!ds) return;
+      datosJugadores = ds;
+      if (!jugadorActivo) {
+        jugadorActivo = jugadorDestacado(ds);
+        const inp = document.getElementById('jug-select');
+        if (inp && jugadorActivo) inp.value = jugadorActivo;
+      }
+      if (jugadorActivo) renderIndividual(jugadorActivo);
+    });
   } catch(e) {
     showError('No se pudo conectar con el servidor. ¿Está corriendo app.py?');
     document.getElementById('drop-icon').textContent = '❌';
@@ -674,6 +1040,7 @@ async function exportarPDF(tipo) {
   if (!idxs.length) { alert('Seleccioná al menos un partido'); return; }
   const fd = new FormData();
   idxs.forEach(i => fd.append('archivo', archivosActuales[i]));
+  fdTiempo(fd);
   if (tipo === 'individual') {
     const sel = document.getElementById('jug-select');
     if (!sel || !sel.value) { alert('Seleccioná un jugador primero'); return; }
@@ -760,6 +1127,24 @@ function renderResultados(d) {
     <button class="btn" style="padding:4px 10px;font-size:11px" onclick="togglePartidos(false)">Ninguno</button>
   </div>` : ''}
 
+  <div class="tiempo-filter">
+    <label>⏱ Minuto</label>
+    <div class="dual-range">
+      <div class="track"></div>
+      <div class="range" id="tiempo-range"></div>
+      <input type="range" id="t-min" min="0" max="90" step="1" value="${tMinMin}" oninput="onTiempo('min')">
+      <input type="range" id="t-max" min="0" max="90" step="1" value="${tMaxMin}" oninput="onTiempo('max')">
+    </div>
+    <div class="tiempo-vals" id="tiempo-vals">${tMinMin}' – ${tMaxMin}'</div>
+    <div class="tiempo-presets">
+      <button onclick="presetTiempo(0,90)">Todo</button>
+      <button onclick="presetTiempo(0,45)">1T</button>
+      <button onclick="presetTiempo(45,90)">2T</button>
+      <button onclick="presetTiempo(0,15)">Inicio</button>
+      <button onclick="presetTiempo(75,90)">Final</button>
+    </div>
+  </div>
+
   <div class="score-box">
     <div class="score-team">
       <div class="score-name">River Plate</div>
@@ -783,15 +1168,15 @@ function renderResultados(d) {
 
   <div class="section">
     <div class="tabs">
-      <div class="tab active" onclick="switchTab('comparativa',this)">⚖ Resumen</div>
+      <div class="tab active" onclick="switchTab('individual',this)">👤 Individual</div>
+      <div class="tab" onclick="switchTab('comparativa',this)">⚖ Resumen</div>
       <div class="tab" onclick="switchTab('ofensivo',this)">⚽ Ofensivo</div>
       <div class="tab" onclick="switchTab('defensivo',this)">🛡 Defensivo</div>
       <div class="tab" onclick="switchTab('plantel',this)">👥 Plantel</div>
-      <div class="tab" onclick="switchTab('individual',this)">👤 Individual</div>
     </div>
 
   <!-- RESUMEN (Comparativa) -->
-  <div class="tab-panel active" id="panel-comparativa">
+  <div class="tab-panel" id="panel-comparativa">
     <div class="compare-panel">
       <div class="compare-legend">
         <span class="lg-river">River</span>
@@ -816,6 +1201,8 @@ function renderResultados(d) {
         ${miniCard('Recuperadas', col.recuperadas, 'green')}
       </div>
     </div>
+
+    ${renderLectura('Lectura del partido', lecturaEquipo(d))}
   </div>
 
   <!-- OFENSIVO -->
@@ -875,6 +1262,22 @@ function renderResultados(d) {
           </div>
           <div style="font-size:10px;color:var(--gris5)">${g.remate}</div>
         </div>`).join('') : '<p style="color:var(--gris5);padding:1rem 0">No se registraron goles.</p>'}
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-title">Eficiencia ofensiva</div></div>
+      ${renderEficiencia(col)}
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Llegadas · <span>Tipo × Carril</span></div>
+        <div class="section-hint">Color rojo más intenso = más llegadas por esa vía</div>
+      </div>
+      <div class="two-col">
+        ${renderMatriz('Por tipo de jugada',  col.matriz_llegadas,  ['Asociado','Directo','Detenidas'], ['Izquierda','Eje','Derecha'])}
+        ${renderMatriz('Por amplitud usada',  col.matriz_amp_carril, ['1 Carril','2 Carriles','3 Carriles'], ['Izquierda','Eje','Derecha'])}
+      </div>
     </div>
   </div>
 
@@ -956,7 +1359,7 @@ function renderResultados(d) {
   </div>
 
   <!-- INDIVIDUAL -->
-  <div class="tab-panel" id="panel-individual">
+  <div class="tab-panel active" id="panel-individual">
     <div class="ind-subtabs">
       <div class="ind-subtab ${vistaInd==='jugador'?'active':''}" onclick="setVistaInd('jugador')">🧑 Jugador</div>
       <div class="ind-subtab ${vistaInd==='colectivo'?'active':''}" onclick="setVistaInd('colectivo')">👥 Colectivo de jugadores</div>
@@ -998,9 +1401,10 @@ function renderResultados(d) {
   `;
 
   document.getElementById('results').innerHTML = html;
+  actualizarRangeBar();
 
   // Restaurar tab activa
-  if (tabActiva && tabActiva !== 'comparativa') {
+  if (tabActiva) {
     const tabEl = Array.from(document.querySelectorAll('.tab'))
       .find(t => t.getAttribute('onclick')?.includes(`'${tabActiva}'`));
     if (tabEl) switchTab(tabActiva, tabEl);
@@ -1103,17 +1507,19 @@ function renderIndividual(jugador) {
   const fd = new FormData();
   idxs.forEach(i => fd.append('archivo', archivosActuales[i]));
   fd.append('jugador', jugador);
+  fdTiempo(fd);
 
-  // Obtener stats individuales del servidor
-  fetch('/api/individual', { method: 'POST', body: fd })
-    .then(r => r.json())
-    .then(ind => {
-      document.getElementById('ind-content').innerHTML = buildIndHTML(ind);
-    })
-    .catch(() => {
-      // fallback: mostrar solo datos básicos
-      document.getElementById('ind-content').innerHTML = `<p style="color:var(--gris5)">Sin datos individuales disponibles para ${jugador}.</p>`;
-    });
+  // Stats individuales + coordenadas en paralelo
+  Promise.all([
+    fetch('/api/individual',     { method: 'POST', body: fd }).then(r => r.json()),
+    fetchCoordsJugador(jugador),
+  ]).then(([ind, coords]) => {
+    coordsActuales = coords || [];
+    document.getElementById('ind-content').innerHTML = buildIndHTML(ind);
+  }).catch(() => {
+    coordsActuales = [];
+    document.getElementById('ind-content').innerHTML = `<p style="color:var(--gris5)">Sin datos individuales disponibles para ${jugador}.</p>`;
+  });
 }
 
 async function setVistaInd(v) {
@@ -1133,11 +1539,25 @@ async function setVistaInd(v) {
   }
 }
 
+function jugadorDestacado(ds) {
+  if (!ds) return '';
+  const arr = Object.values(ds);
+  if (!arr.length) return '';
+  // Score: actividad + aporte ofensivo · sirve como "más destacado del partido"
+  arr.sort((a, b) => {
+    const sa = (a.intervenciones||0) + (a.goles||0)*15 + (a.asistencias||0)*8 + (a.pases_clave||0)*2;
+    const sb = (b.intervenciones||0) + (b.goles||0)*15 + (b.asistencias||0)*8 + (b.pases_clave||0)*2;
+    return sb - sa;
+  });
+  return arr[0].jugador;
+}
+
 async function fetchJugadoresStats() {
   const idxs = Array.from(partidosSel).sort((a,b)=>a-b);
   if (!idxs.length) return null;
   const fd = new FormData();
   idxs.forEach(i => fd.append('archivo', archivosActuales[i]));
+  fdTiempo(fd);
   try {
     const r = await fetch('/api/jugadores-stats', { method:'POST', body:fd });
     return r.ok ? await r.json() : null;
@@ -1176,6 +1596,38 @@ function sumarJugadores(lista) {
   });
   const pt = out.pases_total || 0;
   out.pases_efect = pt ? Math.round((out.pases_completos||0)/pt*100) : 0;
+  return out;
+}
+
+function promediarJugadores(lista) {
+  // Promedio por jugador — base honesta para comparar el grupo contra el plantel
+  const n = lista.length;
+  if (!n) return {};
+  const suma = sumarJugadores(lista);
+  const out = {};
+  Object.entries(suma).forEach(([k, v]) => {
+    if (typeof v === 'number') out[k] = Math.round((v / n) * 10) / 10;
+  });
+  // Para % la división simple sirve (es promedio de porcentajes)
+  // Pero re-deriva efectividad de pase del agregado
+  const pt = suma.pases_total || 0;
+  out.pases_efect = pt ? Math.round((suma.pases_completos||0)/pt*100) : 0;
+  // Reconstruir centro de gravedad y dispersión desde sumas crudas del grupo
+  if (suma.acciones_xy) {
+    out.centro_grav_x = Math.round(suma._sum_x / suma.acciones_xy * 10) / 10;
+    out.centro_grav_y = Math.round(suma._sum_y / suma.acciones_xy * 10) / 10;
+    const var_x = suma._sum_x2 / suma.acciones_xy - (suma._sum_x / suma.acciones_xy) ** 2;
+    const var_y = suma._sum_y2 / suma.acciones_xy - (suma._sum_y / suma.acciones_xy) ** 2;
+    out.dispersion_x = var_x > 0 ? Math.round(Math.sqrt(var_x) * 10) / 10 : 0;
+    out.dispersion_y = var_y > 0 ? Math.round(Math.sqrt(var_y) * 10) / 10 : 0;
+    out.pct_ultimo_tercio = Math.round((suma.acciones_ult3||0) / suma.acciones_xy * 100);
+    out.pct_area = Math.round((suma.acciones_area||0) / suma.acciones_xy * 100);
+  }
+  if (suma.acciones_destino) {
+    out.progresion_media = Math.round(suma._sum_prog / suma.acciones_destino * 10) / 10;
+    out.distancia_media = Math.round(suma._sum_dist / suma.acciones_destino * 10) / 10;
+    out.pct_progresivo = Math.round((suma.acciones_progresivas||0) / suma.acciones_destino * 100);
+  }
   return out;
 }
 
@@ -1251,6 +1703,9 @@ function renderColContent() {
     const sum = sumarJugadores(seleccionados);
     sum.jugador = `Colectivo · ${seleccionados.length} jugadores`;
     sum.condicion = `${seleccionados.length} jugadores`;
+    sum.__promedio = promediarJugadores(seleccionados);
+    sum.__esColectivo = true;
+    sum.__seleccionados = seleccionados;
     cont.innerHTML = buildIndHTML(sum);
   } else {
     cont.innerHTML = renderCreadorGraficos(seleccionados);
@@ -1412,6 +1867,732 @@ function dibujarRadar(jugadores) {
   return svg;
 }
 
+// ─── Motor de lectura textual ────────────────────────────────────────────
+function lecturaEquipo(d) {
+  const out = [];
+  const c = d.colectivas;
+  const lp = c.llegadas_prop, lr = c.llegadas_riv;
+  const gp = c.goles_propios, gr = c.goles_rivales;
+  const sp = c.salidas_prop, cp = c.centros_prop;
+
+  // 1. Dominancia territorial
+  if (lp.total && lr.total) {
+    const ratio = lp.total / lr.total;
+    if (ratio >= 1.5)
+      out.push(`River <b>dominó territorialmente</b>: ${lp.total} llegadas contra ${lr.total} del rival.`);
+    else if (ratio <= 0.7)
+      out.push(`El rival fue <i>superior en generación</i> — ${lr.total} llegadas contra ${lp.total} de River.`);
+    else
+      out.push(`Partido <i>parejo en llegadas</i> (${lp.total} River — ${lr.total} rival).`);
+  }
+
+  // 2. Carril predominante
+  const carriles = [['izquierda', lp.izq], ['eje', lp.eje], ['derecha', lp.der]];
+  const totalCar = carriles.reduce((a,c) => a+c[1], 0);
+  if (totalCar) {
+    const ganador = carriles.sort((a,b) => b[1]-a[1])[0];
+    const pct = Math.round(ganador[1]/totalCar*100);
+    if (pct >= 45) out.push(`El equipo concentró el <b>${pct}%</b> de las llegadas por el carril <b>${ganador[0]}</b> (${ganador[1]} de ${totalCar}).`);
+    else out.push(`Llegadas <i>distribuidas</i> entre los tres carriles (izq ${lp.izq}, eje ${lp.eje}, der ${lp.der}).`);
+  }
+
+  // 3. Tipo de juego
+  const totalTipo = lp.asociado + lp.directo + lp.detenidas;
+  if (totalTipo) {
+    const aso = Math.round(lp.asociado/totalTipo*100);
+    if (aso >= 60) out.push(`Predominó el <b>juego asociado</b> en las llegadas (${aso}%).`);
+    else if (aso <= 30) out.push(`El equipo apostó al <b>juego directo</b> (sólo ${aso}% asociado).`);
+  }
+
+  // 4. Eficacia ofensiva
+  if (c.sit_gol_prop) {
+    if (gp.total) {
+      const conv = Math.round(gp.total/c.sit_gol_prop*100);
+      out.push(`Conversión de <b>${conv}%</b> — ${gp.total} goles en ${c.sit_gol_prop} situaciones de gol.`);
+    } else {
+      out.push(`Generó ${c.sit_gol_prop} situaciones de gol pero <i>no las concretó</i>.`);
+    }
+  }
+  if (lp.total >= 5 && c.sit_gol_prop) {
+    const gen = (c.sit_gol_prop / lp.total).toFixed(2);
+    out.push(`Generación: <b>${gen}</b> situaciones de gol por cada llegada.`);
+  }
+
+  // 5. Balance defensivo
+  if (c.recuperadas || c.perdidas) {
+    const bal = c.recuperadas - c.perdidas;
+    if (Math.abs(bal) >= 5) {
+      const s = bal > 0 ? 'positivo' : 'negativo';
+      out.push(`Balance <b>${s}</b> de balones: ${c.recuperadas} recuperadas vs ${c.perdidas} pérdidas (${bal > 0 ? '+' : ''}${bal}).`);
+    }
+  }
+
+  // 6. Pelota parada
+  if (cp.total) {
+    const efc = cp.total ? Math.round(cp.completos/cp.total*100) : 0;
+    if (efc >= 50) out.push(`Centros <b>eficientes</b>: ${cp.completos}/${cp.total} completados (${efc}%).`);
+    else if (cp.total >= 5) out.push(`<i>Baja eficacia</i> de centros (${cp.completos}/${cp.total}, ${efc}%).`);
+  }
+
+  return out.slice(0, 7);
+}
+
+// Métricas a evaluar en el FODA. invert=true significa "menos es mejor".
+const METRICAS_FODA = [
+  { k: 'pases_efect',        l: 'Efectividad de pase',        minVal: 20, unidad: '%' },
+  { k: 'pases_clave',        l: 'Pases clave',                minVal: 1 },
+  { k: 'pases_filtrado',     l: 'Pases filtrados',            minVal: 1 },
+  { k: 'pases_largo_c',      l: 'Pases largos completados',   minVal: 1 },
+  { k: 'centros_c',          l: 'Centros completados',        minVal: 1 },
+  { k: 'pct_progresivo',     l: '% acciones progresivas',     minVal: 8, unidad: '%' },
+  { k: 'progresion_media',   l: 'Progresión media',           minVal: 2, unidad: 'm' },
+  { k: 'pct_ultimo_tercio',  l: '% último tercio',            unidad: '%' },
+  { k: 'pct_area',           l: '% área rival',               unidad: '%' },
+  { k: 'toques_area',        l: 'Toques en área rival',       minVal: 1 },
+  { k: 'remates_arco',       l: 'Remates al arco',            minVal: 1 },
+  { k: 'goles',              l: 'Goles',                      minVal: 1 },
+  { k: 'asistencias',        l: 'Asistencias',                minVal: 1 },
+  { k: 'dao_plus',           l: '1v1 ofensivos ganados',      minVal: 1 },
+  { k: 'dad_plus',           l: '1v1 defensivos ganados',     minVal: 1 },
+  { k: 'recup_posic',        l: 'Recup. posicionales',        minVal: 2 },
+  { k: 'recup_interv',       l: 'Recup. por intervención',    minVal: 1 },
+  { k: 'intercepciones',     l: 'Intercepciones',             minVal: 1 },
+  { k: 'bloqueos',           l: 'Bloqueos',                   minVal: 1 },
+  { k: 'ruptura',            l: 'Rupturas en conducción',     minVal: 1 },
+  { k: 'recep_lineas',       l: 'Recepciones entre líneas',   minVal: 1 },
+  { k: 'recep_espacio',      l: 'Recepciones al espacio',     minVal: 1 },
+  { k: 'perd_total',         l: 'Pérdidas',                   invert: true, minVal: 4 },
+];
+
+function _percentil(valor, valores) {
+  // Devuelve percentil 0-100 (100 = mejor del plantel)
+  const orden = [...valores].sort((a,b) => a-b);
+  let pos = 0;
+  for (let i = 0; i < orden.length; i++) { if (orden[i] <= valor) pos = i + 1; }
+  return Math.round(pos / orden.length * 100);
+}
+
+function analisisFoda(ind, todos) {
+  const fortalezas = [], debilidades = [];
+  const oportunidades = [], amenazas = [];
+  if (!todos) return { fortalezas, oportunidades, debilidades, amenazas, perfil: '' };
+
+  // Filtrar plantel a los que tuvieron volumen (evita suplentes con 1 acción)
+  const candidatos = Object.values(todos).filter(j => (j.intervenciones || 0) >= 8);
+  if (candidatos.length < 4) return { fortalezas, oportunidades, debilidades, amenazas, perfil: '' };
+
+  METRICAS_FODA.forEach(m => {
+    const v = ind[m.k] || 0;
+    const valores = candidatos.map(j => j[m.k] || 0);
+    let pct = _percentil(v, valores);
+    // Para métricas invertidas, "alto valor" es malo, así que invierto el percentil para que "100" siga siendo bueno
+    if (m.invert) pct = 100 - pct;
+    if (m.minVal != null && (m.invert ? v < m.minVal : v < m.minVal)) {
+      // Si no tiene suficiente volumen, sólo se considera para destacar negativos
+      if (m.invert && v >= m.minVal) {} // no aplica
+      else if (!m.invert) return;
+    }
+    const display = v + (m.unidad || '');
+    if (pct >= 80) fortalezas.push({ label: m.l, valor: display, pct });
+    else if (pct <= 25) debilidades.push({ label: m.l, valor: display, pct });
+  });
+
+  fortalezas.sort((a,b) => b.pct - a.pct);
+  debilidades.sort((a,b) => a.pct - b.pct);
+
+  // ── OPORTUNIDADES: patrones de "casi" o "podría aprovechar" ────────────
+  // Llega al último tercio pero remata poco
+  if (ind.pct_ultimo_tercio >= 30 && ind.acciones_xy >= 15 && (ind.remates_arco || 0) <= 1) {
+    oportunidades.push({ label: 'Llega al último tercio pero remata poco', valor: `${ind.remates_arco||0} rem.` });
+  }
+  // Aporta pases clave pero sin asistencias
+  if ((ind.pases_clave || 0) >= 2 && (ind.asistencias || 0) === 0) {
+    oportunidades.push({ label: 'Genera juego pero no concreta asistencia', valor: `${ind.pases_clave} clave` });
+  }
+  // Buena progresión pero centros bajos
+  if ((ind.pct_progresivo || 0) >= 30 && (ind.centros_c || 0) === 0 && (ind.centros_i || 0) >= 2) {
+    oportunidades.push({ label: 'Progresa bien pero falla todos los centros', valor: `${ind.centros_i} fallados` });
+  }
+  // Está en área rival pero no remata
+  if ((ind.toques_area || 0) >= 3 && (ind.remates_arco || 0) === 0) {
+    oportunidades.push({ label: 'Llega al área pero no define', valor: `${ind.toques_area} toques` });
+  }
+  // 1v1 ofensivos sin intentar
+  if ((ind.pct_ultimo_tercio || 0) >= 25 && ((ind.dao_plus||0) + (ind.dao_minus||0)) === 0 && ind.acciones_xy >= 15) {
+    oportunidades.push({ label: 'Juega arriba pero no encara al rival', valor: '0 duelos 1v1' });
+  }
+
+  // ── AMENAZAS: patrones de riesgo ────────────────────────────────────
+  // Muchas pérdidas en zona baja
+  if ((ind.perd_total || 0) >= 5 && (ind.centro_grav_x || 50) < 50) {
+    amenazas.push({ label: 'Concentra pérdidas en zona propia', valor: `${ind.perd_total} pérd.` });
+  }
+  // Pierde duelos defensivos
+  const dad = (ind.dad_plus||0) + (ind.dad_minus||0);
+  if (dad >= 3 && (ind.dad_minus||0) > (ind.dad_plus||0)) {
+    const pctP = Math.round((ind.dad_minus||0)/dad*100);
+    amenazas.push({ label: 'Pierde duelos defensivos', valor: `${ind.dad_minus}/${dad} (${pctP}%)` });
+  }
+  // Pierde duelos ofensivos
+  const dao = (ind.dao_plus||0) + (ind.dao_minus||0);
+  if (dao >= 3 && (ind.dao_minus||0) > (ind.dao_plus||0) * 1.5) {
+    amenazas.push({ label: 'Mal rendimiento en 1v1 ofensivos', valor: `${ind.dao_plus}/${dao}` });
+  }
+  // Baja efectividad de pase con volumen
+  if ((ind.pases_total||0) >= 30 && (ind.pases_efect||0) < 60) {
+    amenazas.push({ label: 'Baja efectividad con alto volumen de pase', valor: `${ind.pases_efect}%` });
+  }
+  // Muchos pases laterales/atrás vs adelante (juego conservador)
+  const lateral_atras = (ind.pases_lateral||0) + (ind.pases_atras||0);
+  if ((ind.pases_adelante||0) >= 1 && lateral_atras > (ind.pases_adelante||0) * 2.5 && (ind.pases_total||0) >= 20) {
+    amenazas.push({ label: 'Juego conservador (pocos pases hacia adelante)', valor: `${ind.pases_adelante} adelante vs ${lateral_atras} atrás/lateral` });
+  }
+
+  // ── PERFIL CORTO ────────────────────────────────────────────────────
+  let perfil = '';
+  if (ind.acciones_xy >= 10) {
+    const x = ind.centro_grav_x, y = ind.centro_grav_y;
+    const dx = ind.dispersion_x, dy = ind.dispersion_y;
+    let z = x >= 80 ? 'muy adelantado' : x >= 60 ? 'en zona alta-media' : x >= 40 ? 'en zona media' : 'en zona baja';
+    let m = (dx >= 25 || dy >= 22) ? ', con alta movilidad' : (dx <= 15 && dy <= 12) ? ', con posicionamiento estático' : '';
+    perfil = `Operó ${z} (CG ${x}, ${y})${m}. ${ind.intervenciones} intervenciones en ${ind.minutos} min.`;
+  }
+
+  return {
+    fortalezas: fortalezas.slice(0, 4),
+    debilidades: debilidades.slice(0, 4),
+    oportunidades: oportunidades.slice(0, 3),
+    amenazas: amenazas.slice(0, 3),
+    perfil,
+  };
+}
+
+function renderLectura(titulo, bullets) {
+  if (!bullets.length) return '';
+  return `<div class="lectura">
+    <div class="lectura-title">📖 ${titulo}</div>
+    <ul>${bullets.map(b => `<li>${b}</li>`).join('')}</ul>
+  </div>`;
+}
+
+// ─── Eficiencia + matriz Tipo × Carril ───────────────────────────────────
+function renderEficiencia(col) {
+  const lp = col.llegadas_prop, gp = col.goles_propios, cp = col.centros_prop;
+  const tot = lp.total || 0;
+  const sg = col.sit_gol_prop || 0;
+  const goles = gp.total || 0;
+  const conv  = sg ? Math.round(goles / sg * 100) : 0;
+  const gen   = tot ? Math.round(sg / tot * 100) : 0;
+  const efRem = tot ? Math.round(lp.tiros_arco / tot * 100) : 0;
+  const efCen = cp.total ? Math.round(cp.completos / cp.total * 100) : 0;
+  const cards = [
+    { l: 'Conversión',          v: conv + '%',  sub: `${goles} gol${goles!==1?'es':''} / ${sg} sit. gol`,    color: conv >= 25 ? 'green' : conv >= 12 ? 'amber' : 'red' },
+    { l: 'Generación',          v: gen  + '%',  sub: `${sg} sit. gol / ${tot} llegadas`,                    color: gen  >= 30 ? 'green' : gen  >= 15 ? 'amber' : 'red' },
+    { l: 'Remate al arco',      v: efRem+ '%',  sub: `${lp.tiros_arco} al arco / ${tot} llegadas`,          color: efRem>= 40 ? 'green' : efRem>= 25 ? 'amber' : 'red' },
+    { l: 'Centros completados', v: efCen+ '%',  sub: `${cp.completos}/${cp.total||0} centros`,              color: efCen>= 40 ? 'green' : efCen>= 25 ? 'amber' : 'red' },
+  ];
+  return `<div class="efic-grid">${cards.map(c => `
+    <div class="efic-card">
+      <div class="efic-label">${c.l}</div>
+      <div class="efic-val ${c.color}">${c.v}</div>
+      <div class="efic-sub">${c.sub}</div>
+    </div>`).join('')}</div>`;
+}
+
+function renderMatriz(titulo, mat, ordenFilas, ordenCols) {
+  if (!mat || !Object.keys(mat).length) return '';
+  // Conservar orden definido y filtrar las filas/cols presentes
+  const filas = ordenFilas.filter(f => mat[f]);
+  const cols = ordenCols.filter(c => filas.some(f => mat[f][c]));
+  if (!filas.length || !cols.length) return '';
+  // Total para porcentajes y coloreado
+  let total = 0;
+  filas.forEach(f => cols.forEach(c => { total += (mat[f][c] || 0); }));
+  let max = 0;
+  filas.forEach(f => cols.forEach(c => { max = Math.max(max, mat[f][c] || 0); }));
+
+  let html = `<div class="matriz-wrap">
+    <div class="sec-title red" style="margin-top:0">${titulo}</div>
+    <table class="matriz">
+      <tr><th></th>${cols.map(c => `<th>${c}</th>`).join('')}<th style="opacity:.6">Total</th></tr>`;
+  filas.forEach(f => {
+    const filaTotal = cols.reduce((a,c) => a + (mat[f][c]||0), 0);
+    html += `<tr><th class="row-head">${f}</th>`;
+    cols.forEach(c => {
+      const v = mat[f][c] || 0;
+      const pct = total ? Math.round(v/total*100) : 0;
+      const intensity = max ? v/max : 0;
+      const bg = v ? `rgba(204,0,0,${0.12 + intensity*0.55})` : 'var(--gris2)';
+      html += `<td style="background:${bg}"><span class="v">${v}</span><span class="p">${pct ? pct+'%' : ''}</span></td>`;
+    });
+    html += `<td style="opacity:.7"><span class="v">${filaTotal}</span></td></tr>`;
+  });
+  html += `</table></div>`;
+  return html;
+}
+
+// ─── Cancha 2D + heatmap ─────────────────────────────────────────────────
+let pitchModo = 'calor'; // 'calor' | 'puntos' | 'flechas'
+let coordsActuales = [];
+
+function _pitchLines(lc = '#777', lw = 0.22) {
+  let s = '';
+  s += `<rect x="0" y="0" width="120" height="80" fill="none" stroke="${lc}" stroke-width="${lw}"/>`;
+  s += `<line x1="60" y1="0" x2="60" y2="80" stroke="${lc}" stroke-width="${lw}"/>`;
+  s += `<circle cx="60" cy="40" r="9.15" fill="none" stroke="${lc}" stroke-width="${lw}"/>`;
+  s += `<circle cx="60" cy="40" r="0.4" fill="${lc}"/>`;
+  // Áreas y manchones (atacando a la derecha)
+  s += `<rect x="102" y="18" width="18" height="44" fill="none" stroke="${lc}" stroke-width="${lw}"/>`;
+  s += `<rect x="114" y="30" width="6"  height="20" fill="none" stroke="${lc}" stroke-width="${lw}"/>`;
+  s += `<circle cx="108" cy="40" r="0.4" fill="${lc}"/>`;
+  s += `<path d="M 102 33.5 A 9.15 9.15 0 0 1 102 46.5" fill="none" stroke="${lc}" stroke-width="${lw}"/>`;
+  // Propio
+  s += `<rect x="0"  y="18" width="18" height="44" fill="none" stroke="${lc}" stroke-width="${lw}"/>`;
+  s += `<rect x="0"  y="30" width="6"  height="20" fill="none" stroke="${lc}" stroke-width="${lw}"/>`;
+  s += `<circle cx="12" cy="40" r="0.4" fill="${lc}"/>`;
+  s += `<path d="M 18 33.5 A 9.15 9.15 0 0 0 18 46.5" fill="none" stroke="${lc}" stroke-width="${lw}"/>`;
+  // Indicador "→ ataque"
+  s += `<text x="116" y="78" fill="#888" font-size="2.4" text-anchor="end">→ ataque</text>`;
+  return s;
+}
+
+function _describirAccion(tagsStr) {
+  if (!tagsStr) return 'Acción';
+  const t = tagsStr.split(',').map(x => x.trim());
+  const has = (...xs) => xs.every(x => t.includes(x));
+  const any = (...xs) => xs.some(x => t.includes(x));
+  if (t.includes('Gol')) return '⚽ Gol';
+  if (any('Arco') && any('Tiros'))    return 'Remate al arco';
+  if (t.includes('Afuera'))            return 'Remate afuera';
+  if (t.includes('Bloqueado'))         return 'Remate bloqueado';
+  if (t.includes('PCompletos')) {
+    const x = [];
+    if (t.includes('Adelante')) x.push('adelante');
+    if (t.includes('Atras'))    x.push('atrás');
+    if (t.includes('Lateral'))  x.push('lateral');
+    if (t.includes('Largo Completo')) x.push('largo');
+    if (t.includes('Filtrado')) x.push('filtrado');
+    if (t.includes('Clave'))    x.push('clave');
+    return 'Pase completo' + (x.length ? ` (${x.join(', ')})` : '');
+  }
+  if (t.includes('PIncompletos')) return 'Pase incompleto' + (t.includes('Largo Incompleto') ? ' (largo)' : '');
+  if (t.includes('CCompletos'))   return 'Centro completo' + (t.includes('CAsistencia') ? ' (asistencia)' : '');
+  if (t.includes('CIncompletos')) return 'Centro fallado';
+  if (t.includes('1v1O+')) return '1v1 ofensivo ganado';
+  if (t.includes('1v1O-')) return '1v1 ofensivo perdido';
+  if (t.includes('1v1D+')) return '1v1 defensivo ganado';
+  if (t.includes('1v1D-')) return '1v1 defensivo perdido';
+  if (t.includes('DAO+')) return 'Duelo aéreo of. ganado';
+  if (t.includes('DAO-')) return 'Duelo aéreo of. perdido';
+  if (t.includes('DAD+')) return 'Duelo aéreo def. ganado';
+  if (t.includes('DAD-')) return 'Duelo aéreo def. perdido';
+  if (t.includes('R+')) return 'Regate completado';
+  if (t.includes('R-')) return 'Regate fallado';
+  if (t.some(x => x.startsWith('RECUPERACION'))) {
+    if (t.includes('RECUPERACION xIntervencion')) return 'Recuperación por intervención';
+    if (t.includes('RECUPERACION xPosicional'))    return 'Recuperación posicional';
+    if (t.includes('Tras Perdida')) return 'Recuperación tras pérdida';
+    return 'Recuperación';
+  }
+  if (t.some(x => x.startsWith('PERDIDAS'))) {
+    if (t.includes('PERDIDAS: xPase')) return 'Pérdida por pase';
+    if (t.includes('PERDIDAS: xControl')) return 'Pérdida por control';
+    if (t.includes('PERDIDAS: xGambeta')) return 'Pérdida por gambeta';
+    return 'Pérdida';
+  }
+  if (t.includes('Intervencion Defensiva')) {
+    if (t.includes('E+')) return 'Entrada exitosa';
+    if (t.includes('E-')) return 'Entrada fallada';
+    if (t.includes('A+')) return 'Anticipo logrado';
+    if (any('I+','I-')) return 'Intercepción';
+    if (any('B+','B-')) return 'Bloqueo';
+    return 'Intervención defensiva';
+  }
+  if (t.includes('Despeje')) return 'Despeje' + (t.includes('D+') ? ' orientado' : '');
+  if (t.includes('Toques en Area Rival')) return 'Toque en área rival';
+  if (t.includes('Recepcion entre Lineas')) return 'Recepción entre líneas';
+  if (t.includes('Recepcion al espacio')) return 'Recepción al espacio';
+  if (t.includes('Recepcion a espaldas del volante')) return 'Recepción a espaldas del vol.';
+  if (t.includes('Ruptura en conduccion')) return 'Ruptura en conducción';
+  if (t.includes('Faltas Hechas')) return 'Falta hecha';
+  if (t.includes('Faltas Recibidas')) return 'Falta recibida';
+  const ignorar = new Set(['POSITIVO','NEGATIVO','Asociado','Directo','Adelante','Atras','Lateral','Apoyo']);
+  return t.find(x => x && !ignorar.has(x)) || 'Acción';
+}
+
+function _outcomeAccion(tagsStr) {
+  // 'neg' = pase/centro fallado, remate afuera/bloqueado, pérdida, duelo perdido
+  // 'pos' = completos, ganados, recuperaciones, recepciones, toques (acciones registradas exitosas)
+  if (!tagsStr) return 'pos';
+  const t = tagsStr.split(',').map(x => x.trim());
+  const neg = ['PIncompletos','CIncompletos','1v1O-','1v1D-','DAO-','DAD-','R-',
+               'E-','A-','NEGATIVO','Afuera','Bloqueado','Incompleto','Largo Incompleto'];
+  if (neg.some(n => t.includes(n))) return 'neg';
+  if (t.some(x => x.startsWith('PERDIDAS'))) return 'neg';
+  return 'pos';
+}
+
+function _rivalDePartido(timeline) {
+  if (!timeline) return 'rival';
+  const m = timeline.match(/vs\.?\s+(.+?)$/i);
+  return m ? m[1].trim() : timeline.trim();
+}
+
+function _formatMin(s) {
+  const m = Math.floor(s/60);
+  const sec = Math.round(s % 60);
+  return `${m}'${String(sec).padStart(2,'0')}"`;
+}
+
+function _tituloAccion(a) {
+  const acc = _describirAccion(a.tags);
+  const rival = _rivalDePartido(a.partido);
+  const min = _formatMin(a.t);
+  return `${acc} · vs ${rival} · ${min}`;
+}
+
+function dibujarCancha(acciones, modo = 'calor') {
+  // Nacsport: y crece hacia un lado y el SVG hacia el otro — invertimos para
+  // que las acciones de los laterales caigan en su carril correcto.
+  acciones = acciones.map(a => ({
+    ...a,
+    y:  80 - a.y,
+    ye: a.ye != null ? 80 - a.ye : null,
+  }));
+  const cellW = 10, cellH = 10;
+  let svg = `<svg viewBox="0 0 120 80" preserveAspectRatio="xMidYMid meet" class="pitch-svg">`;
+  // Fondo
+  svg += `<rect width="120" height="80" fill="#141414"/>`;
+
+  if (modo === 'calor' || modo === 'flechas') {
+    // Heatmap binning
+    const bins = {};
+    acciones.forEach(a => {
+      if (a.x == null || a.y == null) return;
+      const cx = Math.min(11, Math.max(0, Math.floor(a.x / cellW)));
+      const cy = Math.min(7,  Math.max(0, Math.floor(a.y / cellH)));
+      bins[`${cx},${cy}`] = (bins[`${cx},${cy}`] || 0) + 1;
+    });
+    const maxV = Math.max(1, ...Object.values(bins));
+    Object.entries(bins).forEach(([k, count]) => {
+      const [cx, cy] = k.split(',').map(Number);
+      const ratio = count / maxV;
+      const op = 0.12 + ratio * 0.65;
+      svg += `<rect x="${cx*cellW}" y="${cy*cellH}" width="${cellW}" height="${cellH}" fill="#CC0000" opacity="${op}"/>`;
+    });
+  }
+
+  // Líneas de cancha
+  svg += _pitchLines();
+
+  const escAttr = s => s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  if (modo === 'puntos') {
+    acciones.forEach(a => {
+      const out = _outcomeAccion(a.tags);
+      const color = out === 'neg' ? '#CC0000'
+                  : a.area        ? '#f5a623'
+                  :                 '#3ecf8e';
+      svg += `<g data-tip="${escAttr(_tituloAccion(a))}" style="cursor:default">` +
+             `<circle cx="${a.x}" cy="${a.y}" r="3" fill="transparent"/>` +
+             `<circle cx="${a.x}" cy="${a.y}" r="1.1" fill="${color}" opacity="0.85"/>` +
+             `</g>`;
+    });
+  } else if (modo === 'flechas') {
+    acciones.filter(a => a.prog && a.xe != null && a.ye != null).forEach(a => {
+      const destEnArea = a.xe >= 102 && a.ye >= 18 && a.ye <= 62;
+      const destEnUlt3 = a.xe >= 80;
+      const color = destEnArea ? '#f5a623' : destEnUlt3 ? '#3ecf8e' : '#CC0000';
+      svg += `<g data-tip="${escAttr(_tituloAccion(a))}" style="cursor:default">` +
+             `<line x1="${a.x}" y1="${a.y}" x2="${a.xe}" y2="${a.ye}" stroke="${color}" stroke-width="0.6" opacity="0.5"/>` +
+             `<line x1="${a.x}" y1="${a.y}" x2="${a.xe}" y2="${a.ye}" stroke="${color}" stroke-width="0.4" opacity="0.9"/>` +
+             `<circle cx="${a.xe}" cy="${a.ye}" r="0.9" fill="${color}" opacity="0.98"/>` +
+             `<circle cx="${a.x}" cy="${a.y}" r="2.5" fill="transparent"/>` +
+             `</g>`;
+    });
+  }
+
+  svg += '</svg>';
+  return svg;
+}
+
+function setPitchModo(m) {
+  pitchModo = m;
+  const cont = document.getElementById('pitch-container');
+  if (cont) cont.innerHTML = dibujarCancha(coordsActuales, m);
+  document.querySelectorAll('.pitch-modos button').forEach((b, i) => {
+    b.classList.toggle('active',
+      (i === 0 && m === 'calor') || (i === 1 && m === 'puntos') || (i === 2 && m === 'flechas'));
+  });
+}
+
+async function fetchCoordsJugador(jugador) {
+  const idxs = Array.from(partidosSel).sort((a,b)=>a-b);
+  if (!idxs.length) return [];
+  const fd = new FormData();
+  idxs.forEach(i => fd.append('archivo', archivosActuales[i]));
+  fd.append('jugador', jugador);
+  fdTiempo(fd);
+  try {
+    const r = await fetch('/api/coords-jugador', { method: 'POST', body: fd });
+    return r.ok ? await r.json() : [];
+  } catch { return []; }
+}
+
+// ─── Pizza chart + beeswarm + detección de estilo ────────────────────────
+// 8 métricas elegidas para cubrir las 4 dimensiones del juego:
+//   construcción · creación · ataque al área · trabajo defensivo
+const METRICAS_PIZZA = [
+  { k: 'pases_efect',       l: '% Pase',         unidad: '%', grupo: 'construccion' },
+  { k: 'pct_progresivo',    l: '% Progresivo',   unidad: '%', grupo: 'construccion' },
+  { k: 'pases_clave',       l: 'P. clave',                    grupo: 'creacion' },
+  { k: 'pases_filtrado',    l: 'P. filtrado',                 grupo: 'creacion' },
+  { k: 'pct_area',          l: '% Área',         unidad: '%', grupo: 'ataque' },
+  { k: 'remates_arco',      l: 'Remates',                     grupo: 'ataque' },
+  { k: 'recup_interv',      l: 'Recup. activas',              grupo: 'defensa' },
+  { k: 'intercepciones',    l: 'Intercep.',                   grupo: 'defensa' },
+];
+
+// Estilos de juego — cada uno mira un grupo de métricas y le pone nombre al perfil
+// `nombre` = jugador individual · `nombreEq` = grupo colectivo
+const ESTILOS = [
+  { id: 'area',         nombre: 'Atacante de área',      nombreEq: 'Bloque de ataque al área',  icon: '🎯', metricas: ['pct_area', 'remates_arco', 'goles', 'toques_area'] },
+  { id: 'creativo',     nombre: 'Generador creativo',    nombreEq: 'Bloque creativo',           icon: '🪄', metricas: ['pases_clave', 'pases_filtrado', 'recep_lineas', 'asistencias'] },
+  { id: 'conductor',    nombre: 'Encarador / Conductor', nombreEq: 'Equipo de duelos',          icon: '🏃', metricas: ['dao_plus', 'ruptura', 'regate_c', 'pct_progresivo'] },
+  { id: 'distribuidor', nombre: 'Distribuidor',           nombreEq: 'Bloque de tenencia',        icon: '🎼', metricas: ['pases_efect', 'pases_largo_c', 'pases_total'] },
+  { id: 'recuperador',  nombre: 'Recuperador alto',       nombreEq: 'Bloque de presión alta',    icon: '🔥', metricas: ['recup_interv', 'recup_tras', 'pct_ultimo_tercio'] },
+  { id: 'cierre',       nombre: 'Cierre defensivo',       nombreEq: 'Bloque defensivo',          icon: '🛡', metricas: ['intercepciones', 'bloqueos', 'dad_plus', 'recup_posic'] },
+];
+
+function detectarEstilo(ind, todos, esEquipo = false) {
+  if (!todos) return null;
+  const candidatos = Object.values(todos).filter(j => (j.intervenciones||0) >= 8);
+  if (candidatos.length < 4) return null;
+  const nom = e => esEquipo ? e.nombreEq : e.nombre;
+
+  const scores = ESTILOS.map(estilo => {
+    let suma = 0, n = 0;
+    estilo.metricas.forEach(m => {
+      const valores = candidatos.map(j => j[m] || 0);
+      if (Math.max(...valores) === 0) return;
+      const pct = _percentil(ind[m] || 0, valores);
+      suma += pct; n++;
+    });
+    return { ...estilo, pct: n ? Math.round(suma / n) : 0, n };
+  }).filter(s => s.n > 0).sort((a, b) => b.pct - a.pct);
+
+  const mixto = esEquipo ? 'Bloque mixto' : 'Perfil mixto';
+  if (!scores.length || scores[0].pct < 55) {
+    return { nombre: mixto, icon: '🔀', detalle: 'Sin dominancia clara en ningún rol', pct: scores[0]?.pct || 0 };
+  }
+  const top = scores[0], seg = scores[1];
+  let nombre = nom(top), icon = top.icon;
+  if (seg && seg.pct >= 60 && top.pct - seg.pct < 8) {
+    nombre = `${nom(top)} + ${nom(seg)}`;
+    icon = `${top.icon}${seg.icon}`;
+  }
+  const sufijo = esEquipo ? '(promedio del grupo)' : '';
+  const detalle = `Promedio percentil ${top.pct} en ${top.metricas.slice(0,3).join(' · ')} ${sufijo}`.trim();
+  return { nombre, icon, detalle, pct: top.pct, ranking: scores };
+}
+
+function _rankPos(valor, valores) {
+  const ord = [...valores].sort((a,b) => b - a);
+  return ord.findIndex(v => v === valor) + 1;
+}
+
+function analisisJugador(ind, todos) {
+  if (!ind || !todos) return '';
+  const candidatos = Object.values(todos).filter(j => (j.intervenciones||0) >= 8);
+  if (candidatos.length < 4) return '';
+  const N = candidatos.length;
+  const lineas = [];
+
+  // 1. Apertura — estilo + volumen
+  const est = detectarEstilo(ind, todos, false);
+  const cnt = `${ind.intervenciones} intervenciones en ${ind.minutos} min`;
+  if (est && est.nombre && !est.nombre.includes('mixto')) {
+    lineas.push(`${ind.jugador} desplegó un perfil claro de <b>${est.nombre.toLowerCase()}</b>, sumando ${cnt}.`);
+  } else {
+    lineas.push(`${ind.jugador} acumuló ${cnt} sin un rol estadísticamente dominante.`);
+  }
+
+  // 2. Posición + movilidad
+  if (ind.acciones_xy >= 10) {
+    const x = ind.centro_grav_x, dx = ind.dispersion_x, dy = ind.dispersion_y;
+    let s = 'Operó ';
+    if (x >= 78) s += `<b>muy cerca del arco rival</b> (CG x=${x})`;
+    else if (x >= 60) s += `<b>en zona alta-media</b> (CG x=${x})`;
+    else if (x >= 42) s += `<b>en zona media</b>, balanceando construcción y avance`;
+    else s += `<b>en zona baja</b> (CG x=${x}), priorizando salida y cobertura`;
+    if (dx >= 25 || dy >= 22) s += ', con <i>alta movilidad</i> por la cancha.';
+    else if (dx <= 14 && dy <= 12) s += ', con un <i>posicionamiento muy estático</i>.';
+    else s += '.';
+    lineas.push(s);
+  }
+
+  // 3. Fortalezas — top 2 métricas por percentil
+  const fortalezas = [];
+  METRICAS_PIZZA.forEach(m => {
+    const vals = candidatos.map(j => j[m.k]||0);
+    if (Math.max(...vals) === 0) return;
+    const pct = _percentil(ind[m.k]||0, vals);
+    if (pct >= 75 && (ind[m.k]||0) > 0) {
+      fortalezas.push({ ...m, valor: ind[m.k], pct, rank: _rankPos(ind[m.k], vals) });
+    }
+  });
+  fortalezas.sort((a,b) => b.pct - a.pct);
+  if (fortalezas.length >= 1) {
+    const t = fortalezas[0];
+    let s = `Destacó por <b>${t.valor}${t.unidad||''} en ${t.l.toLowerCase()}</b> (${t.rank}º del plantel)`;
+    if (fortalezas.length >= 2) {
+      const t2 = fortalezas[1];
+      s += ` y <b>${t2.valor}${t2.unidad||''} en ${t2.l.toLowerCase()}</b> (${t2.rank}º)`;
+    }
+    s += '.';
+    lineas.push(s);
+  }
+
+  // 4. Aporte directo
+  const partes = [];
+  if (ind.goles)       partes.push(`<b>${ind.goles} gol${ind.goles>1?'es':''}</b>`);
+  if (ind.asistencias) partes.push(`<b>${ind.asistencias} asistencia${ind.asistencias>1?'s':''}</b>`);
+  if (!ind.asistencias && ind.pases_clave >= 2) partes.push(`<b>${ind.pases_clave} pases clave</b>`);
+  const recup = (ind.recup_posic||0) + (ind.recup_interv||0) + (ind.recup_tras||0);
+  if (recup >= 6) partes.push(`<b>${recup} recuperaciones</b>`);
+  if (partes.length) {
+    lineas.push(`Aporte directo en el partido: ${partes.join(' + ')}.`);
+  }
+
+  // 5. Debilidad o sello distintivo
+  const debilidades = [];
+  METRICAS_PIZZA.forEach(m => {
+    const vals = candidatos.map(j => j[m.k]||0);
+    if (Math.max(...vals) === 0) return;
+    const pct = _percentil(ind[m.k]||0, vals);
+    if (pct <= 25) debilidades.push({ ...m, valor: ind[m.k]||0, pct });
+  });
+  if (debilidades.length && ind.pct_progresivo < 30 && ind.pases_efect < 70) {
+    const d = debilidades[0];
+    lineas.push(`Como aspecto a mejorar, sus números en <b>${d.l.toLowerCase()}</b> (${d.valor}${d.unidad||''}) quedaron por debajo del promedio del plantel.`);
+  } else if (ind.pct_area >= 5 && ind.toques_area >= 3) {
+    lineas.push(`Frecuentó con peligrosidad el área rival (<b>${ind.toques_area} toques</b>, ${ind.pct_area}% de sus acciones).`);
+  } else if (ind.pct_progresivo >= 35) {
+    lineas.push(`Su juego es <b>marcadamente vertical</b>: ${ind.pct_progresivo}% de sus acciones con destino avanzaron hacia el arco rival.`);
+  } else if (ind.pases_efect >= 85 && ind.pases_total >= 30) {
+    lineas.push(`Mostró una efectividad de pase del <b>${ind.pases_efect}%</b> sobre un volumen importante (${ind.pases_total} pases).`);
+  }
+
+  return lineas.join(' ');
+}
+
+function pizzaPlayer(ind, todos) {
+  if (!todos) return '';
+  const candidatos = Object.values(todos).filter(j => (j.intervenciones||0) >= 8);
+  if (candidatos.length < 4) return '';
+
+  const W = 580, H = 520, cx = W/2, cy = H/2, rMin = 36, rMax = 190;
+  const slices = METRICAS_PIZZA.map((m, i) => {
+    const v = ind[m.k] || 0;
+    const valores = candidatos.map(j => j[m.k] || 0);
+    const pct = _percentil(v, valores);
+    const r = rMin + (pct/100) * (rMax - rMin);
+    return { ...m, v, pct, r, ang: -Math.PI/2 + i * (2*Math.PI/METRICAS_PIZZA.length) };
+  });
+  const angSlice = 2*Math.PI / METRICAS_PIZZA.length;
+
+  const arc = (r, a0, a1) => {
+    const x0 = cx + Math.cos(a0)*r, y0 = cy + Math.sin(a0)*r;
+    const x1 = cx + Math.cos(a1)*r, y1 = cy + Math.sin(a1)*r;
+    return `M ${cx},${cy} L ${x0},${y0} A ${r},${r} 0 0 1 ${x1},${y1} Z`;
+  };
+  const colorPct = p => p >= 70 ? '#3ecf8e' : p >= 40 ? '#f5a623' : '#CC0000';
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:500px;display:block;margin:0 auto">`;
+  // Anillos guía
+  [0.25, 0.5, 0.75, 1].forEach(s => {
+    const r = rMin + s * (rMax - rMin);
+    svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#2a2a2a"/>`;
+  });
+  // Slices
+  slices.forEach(s => {
+    const a0 = s.ang - angSlice/2;
+    const a1 = s.ang + angSlice/2;
+    svg += `<path d="${arc(s.r, a0, a1)}" fill="${colorPct(s.pct)}" fill-opacity="0.82" stroke="#0a0a0a" stroke-width="1.5"/>`;
+  });
+  // Ejes
+  slices.forEach(s => {
+    const x = cx + Math.cos(s.ang)*rMax;
+    const y = cy + Math.sin(s.ang)*rMax;
+    svg += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#1a1a1a" stroke-width="1"/>`;
+  });
+  // Labels alrededor
+  slices.forEach(s => {
+    const r = rMax + 32;
+    const x = cx + Math.cos(s.ang)*r;
+    const y = cy + Math.sin(s.ang)*r;
+    svg += `<text x="${x}" y="${y-4}" fill="#ccc" font-size="12" text-anchor="middle" font-weight="600">${s.l}</text>`;
+    svg += `<text x="${x}" y="${y+10}" fill="${colorPct(s.pct)}" font-size="11" text-anchor="middle" font-weight="800">${s.v}${s.unidad||''} · p${s.pct}</text>`;
+  });
+  svg += '</svg>';
+  return svg;
+}
+
+function beeswarmCompacto(ind, todos, seleccionados = null) {
+  if (!todos) return '';
+  const candidatos = Object.values(todos).filter(j => (j.intervenciones||0) >= 8);
+  if (candidatos.length < 3) return '';
+  const setSel = seleccionados ? new Set(seleccionados) : null;
+
+  const W = 200, H = 70;
+  return `<div class="beeswarm-grid">${
+    METRICAS_PIZZA.map(m => {
+      const valores = candidatos.map(j => ({ nombre: j.jugador, v: j[m.k] || 0 }));
+      const max = Math.max(1, ...valores.map(p => p.v));
+      const sx = v => 16 + (v / max) * (W - 32);
+      const yVal = 38;
+      let svg = `<svg viewBox="0 0 ${W} ${H}" class="beeswarm-svg">`;
+      svg += `<text x="${W/2}" y="14" fill="#ccc" font-size="10" text-anchor="middle" font-weight="600">${m.l}</text>`;
+      svg += `<line x1="14" y1="${yVal}" x2="${W-14}" y2="${yVal}" stroke="#3a3a3a"/>`;
+      valores.forEach((p, i) => {
+        const cx = sx(p.v);
+        const cy = yVal - 2 + ((i % 3) - 1) * 3;
+        const esEl = setSel ? setSel.has(p.nombre) : (p.nombre === ind.jugador);
+        svg += `<circle cx="${cx}" cy="${cy}" r="${esEl?4.5:2.5}" fill="${esEl?'#CC0000':'#555'}" opacity="${esEl?1:0.55}"><title>${p.nombre}: ${p.v}${m.unidad||''}</title></circle>`;
+      });
+      // Marca de promedio del grupo (línea vertical roja punteada) en modo colectivo
+      if (setSel) {
+        const xAvg = sx(ind[m.k] || 0);
+        svg += `<line x1="${xAvg}" y1="${yVal-12}" x2="${xAvg}" y2="${yVal+12}" stroke="#CC0000" stroke-width="1.5" stroke-dasharray="3,2"/>`;
+      }
+      svg += `<text x="${W/2}" y="${H-6}" fill="#f5f5f5" font-size="11" text-anchor="middle" font-weight="800">${(ind[m.k]||0)}${m.unidad||''}</text>`;
+      svg += '</svg>';
+      return svg;
+    }).join('')
+  }</div>`;
+}
+
+function renderFoda(titulo, foda) {
+  if (!foda) return '';
+  const todoVacio = !foda.fortalezas.length && !foda.debilidades.length && !foda.oportunidades.length && !foda.amenazas.length && !foda.perfil;
+  if (todoVacio) return '';
+  const box = (clase, icono, titulo, items) => {
+    const contenido = items.length
+      ? `<ul>${items.map(it => `<li><span>${it.label}</span><span class="v">${it.valor}</span></li>`).join('')}</ul>`
+      : '<div class="foda-empty">Sin señales destacadas</div>';
+    return `<div class="foda-box ${clase}"><div class="foda-box-title">${icono} ${titulo}</div>${contenido}</div>`;
+  };
+  return `<div class="lectura">
+    <div class="lectura-title">📖 ${titulo}</div>
+    ${foda.perfil ? `<div class="foda-summary">${foda.perfil}</div>` : ''}
+    <div class="foda-grid">
+      ${box('f', '💪', 'Fortalezas',     foda.fortalezas)}
+      ${box('o', '📈', 'Oportunidades',  foda.oportunidades)}
+      ${box('d', '⚠',  'Debilidades',    foda.debilidades)}
+      ${box('a', '🔻', 'Amenazas',       foda.amenazas)}
+    </div>
+  </div>`;
+}
+
 function buildIndHTML(ind) {
   if (!ind || Object.keys(ind).length === 0) return '<p style="color:var(--gris5)">Sin datos individuales para este jugador.</p>';
 
@@ -1420,6 +2601,9 @@ function buildIndHTML(ind) {
 
   function ir(label, val, color='') {
     return `<div class="ind-row"><span class="ind-row-label">${label}</span><span class="ind-row-val ${color}">${val}</span></div>`;
+  }
+  function irTip(label, val, tip, color='') {
+    return `<div class="ind-row"><span class="ind-row-label">${label}<span class="info-dot" data-tip="${tip.replace(/"/g,'&quot;')}">i</span></span><span class="ind-row-val ${color}">${val}</span></div>`;
   }
 
   return `
@@ -1434,6 +2618,74 @@ function buildIndHTML(ind) {
       <div class="kpi"><div class="kpi-val blue">${ind.pases_clave||0}</div><div class="kpi-label">Pases clave</div></div>
     </div>
   </div>
+
+  ${(datosJugadores && Object.keys(datosJugadores).length >= 4) ? (() => {
+    const esColectivo = !!ind.__esColectivo;
+    // En colectivo, las visualizaciones comparativas usan el promedio por jugador del grupo
+    const indPerfil = esColectivo ? (ind.__promedio || ind) : ind;
+    const est = detectarEstilo(indPerfil, datosJugadores, esColectivo);
+    const esMixto = !est || est.nombre.includes('mixto');
+    const tituloPiz = esColectivo ? '🍕 Percentiles (promedio del grupo vs plantel)' : '🍕 Percentiles en el plantel';
+    const tituloBee = esColectivo ? '🐝 Distribución del plantel (con jugadores seleccionados marcados)' : '🐝 Distribución del plantel';
+    const piePieBee = esColectivo
+      ? `Puntos rojos = los ${ind.__seleccionados?.length||'N'} jugadores del colectivo · puntos grises = no seleccionados`
+      : `Punto rojo grande = ${ind.jugador} · puntos grises = resto del plantel · hover para ver nombre y valor`;
+    return `
+  <div class="perfil-visual">
+    <div>
+      ${est ? `<div class="estilo-badge ${esMixto?'mixto':''}">
+        <div class="ico">${est.icon}</div>
+        <div class="nombre">${est.nombre}</div>
+        <div class="detalle">${est.detalle}</div>
+      </div>` : ''}
+      <div class="perfil-titulo">${tituloPiz}</div>
+      ${pizzaPlayer(indPerfil, datosJugadores)}
+      <div class="perfil-leyenda">
+        <span class="lg-top">Top (p ≥ 70)</span>
+        <span class="lg-medio">Medio (p 40-69)</span>
+        <span class="lg-bajo">Bajo (p &lt; 40)</span>
+      </div>
+    </div>
+    <div>
+      <div class="perfil-titulo">${tituloBee}</div>
+      ${beeswarmCompacto(indPerfil, datosJugadores, esColectivo ? (ind.__seleccionados||[]) : null)}
+      <div style="font-size:10px;color:var(--gris5);margin-top:10px;text-align:center">${piePieBee}</div>
+      ${!esColectivo ? (() => {
+        const txt = analisisJugador(ind, datosJugadores);
+        return txt ? `<div class="analisis-jug">
+          <div class="analisis-jug-titulo">📝 Análisis del jugador</div>
+          <p>${txt}</p>
+        </div>` : '';
+      })() : ''}
+    </div>
+  </div>`;
+  })() : ''}
+
+  ${(coordsActuales && coordsActuales.length > 0) ? `
+  <div class="pitch-section">
+    <div class="pitch-head">
+      <div class="perfil-titulo">🗺 Mapa en cancha · ${coordsActuales.length} acciones</div>
+      <div class="pitch-modos">
+        <button class="${pitchModo==='calor'?'active':''}"   onclick="setPitchModo('calor')">🔥 Calor</button>
+        <button class="${pitchModo==='puntos'?'active':''}"  onclick="setPitchModo('puntos')">⦿ Puntos</button>
+        <button class="${pitchModo==='flechas'?'active':''}" onclick="setPitchModo('flechas')">➤ Progresivas</button>
+      </div>
+    </div>
+    <div id="pitch-container">${dibujarCancha(coordsActuales, pitchModo)}</div>
+    <div class="pitch-leyenda">
+      ${pitchModo==='puntos' ? `
+        <span><span style="display:inline-block;width:8px;height:8px;background:#3ecf8e;border-radius:50%;margin-right:5px;vertical-align:middle"></span>Completa / positiva</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:#f5a623;border-radius:50%;margin-right:5px;vertical-align:middle"></span>En área rival</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:#CC0000;border-radius:50%;margin-right:5px;vertical-align:middle"></span>Incompleta / pérdida</span>
+      ` : pitchModo==='flechas' ? `
+        <span><span style="display:inline-block;width:10px;height:3px;background:#f5a623;margin-right:5px;vertical-align:middle"></span>Termina en área rival</span>
+        <span><span style="display:inline-block;width:10px;height:3px;background:#3ecf8e;margin-right:5px;vertical-align:middle"></span>Termina en último tercio</span>
+        <span><span style="display:inline-block;width:10px;height:3px;background:#CC0000;margin-right:5px;vertical-align:middle"></span>Progresa pero no llega arriba</span>
+      ` : `
+        <span>Color rojo más intenso = más acciones en esa zona · grilla 12 × 8</span>
+      `}
+    </div>
+  </div>` : ''}
 
   <div class="ind-grid">
     <div class="ind-block">
@@ -1471,6 +2723,19 @@ function buildIndHTML(ind) {
     </div>
 
     <div class="ind-block">
+      <div class="ind-block-title">Mapa posicional</div>
+      ${irTip('Centro de gravedad', `(${ind.centro_grav_x||0}, ${ind.centro_grav_y||0})`, 'Promedio de coordenadas (x, y) de todas las acciones del jugador. Indica dónde se posicionó habitualmente. x crece hacia el arco rival (0-120). y es el ancho (0-80).')}
+      ${irTip('Dispersión x · y', `${ind.dispersion_x||0} · ${ind.dispersion_y||0}`, 'Desvío estándar de las coordenadas. Alto = jugador móvil que cubre mucho terreno. Bajo = jugador anclado a una zona.')}
+      ${irTip('Acciones con coord.', ind.acciones_xy||0, 'Cantidad de acciones del jugador que tienen coordenadas registradas. Es la base de todas las métricas posicionales.')}
+      ${irTip('% último tercio', (ind.pct_ultimo_tercio||0)+'%', 'Porcentaje de las acciones del jugador que ocurrieron en x ≥ 80 (último tercio ofensivo).', (ind.pct_ultimo_tercio||0) > 40 ? 'red' : '')}
+      ${irTip('% área rival', (ind.pct_area||0)+'%', 'Porcentaje de las acciones dentro del área rival (x > 102, y entre 18 y 62).', (ind.pct_area||0) > 5 ? 'amber' : '')}
+      <div class="ind-block-title sub">Progresión</div>
+      ${irTip('Progresión media (mts)', ind.progresion_media||0, 'Promedio de metros que avanza hacia el arco rival en cada acción con origen y destino (x_destino − x_origen). Positivo = avanza, negativo = retrocede.')}
+      ${irTip('Distancia media (mts)', ind.distancia_media||0, 'Promedio de la distancia euclídea entre origen y destino de cada acción. Mide qué tan largas son sus acciones, sin importar dirección.')}
+      ${irTip('% acciones progresivas', (ind.pct_progresivo||0)+'%', 'Porcentaje de las acciones con destino que avanzaron ≥ 10 metros hacia el arco rival. Mide cuánto aporta el jugador al ataque del equipo.', (ind.pct_progresivo||0) > 30 ? 'green' : '')}
+    </div>
+
+    <div class="ind-block">
       <div class="ind-block-title">Defensa y táctica</div>
       ${ir('Recup. posicional', ind.recup_posic, 'green')}
       ${ir('Recup. x intervención', ind.recup_interv, 'green')}
@@ -1484,7 +2749,14 @@ function buildIndHTML(ind) {
       ${ir('Recep. al espacio', ind.recep_espacio)}
       ${ir('Ruptura en conducción', ind.ruptura)}
     </div>
-  </div>`;
+  </div>
+
+  ${(() => {
+    const esCol = !!ind.__esColectivo;
+    const indFoda = esCol ? (ind.__promedio || ind) : ind;
+    const titulo = esCol ? 'FODA del colectivo (promedio del grupo)' : 'FODA de ' + ind.jugador;
+    return renderFoda(titulo, analisisFoda(indFoda, datosJugadores));
+  })()}`;
 }
 </script>
 </body>

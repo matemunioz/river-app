@@ -20,6 +20,20 @@ def leer_archivo(archivo):
     return sc.leer_desde_bytes(archivo.read(), ext)
 
 
+def _aplicar_tiempo(df, req):
+    """Filtra rows por rango de tiempo (Start time en segundos)."""
+    t_min = req.form.get("t_min")
+    t_max = req.form.get("t_max")
+    if not t_min and not t_max:
+        return df
+    mask = df["Start time"].notna()
+    if t_min:
+        mask &= df["Start time"] >= float(t_min)
+    if t_max:
+        mask &= df["Start time"] <= float(t_max)
+    return df[mask].copy()
+
+
 def leer_todos(req):
     """Devuelve lista de DataFrames a partir de uno o más uploads bajo 'archivo'."""
     files = req.files.getlist("archivo")
@@ -30,6 +44,7 @@ def leer_todos(req):
         df = leer_archivo(f)
         if "Row" not in df.columns:
             raise ValueError(f"'{f.filename}' no tiene columna 'Row'. ¿Es un export de Sportcode?")
+        df = _aplicar_tiempo(df, req)
         dfs.append(df)
     return dfs
 
@@ -111,6 +126,34 @@ def jugadores_stats():
         if inds:
             out[j] = sc.combinar_individuales(inds)
     return jsonify(out)
+
+
+@app.route("/api/coords-jugador", methods=["POST"])
+def coords_jugador():
+    jugador = request.form.get("jugador", "")
+    if not jugador:
+        return jsonify({"error": "Falta jugador"}), 400
+    try:
+        dfs = leer_todos(request)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    import pandas as pd
+    acciones = []
+    for df in dfs:
+        sub = df[(df["Row"] == jugador) & df["x_start"].notna() & df["y_start"].notna()]
+        for _, r in sub.iterrows():
+            acciones.append({
+                "x":  float(r["x_start"]),
+                "y":  float(r["y_start"]),
+                "xe": float(r["x_end"]) if pd.notna(r.get("x_end")) else None,
+                "ye": float(r["y_end"]) if pd.notna(r.get("y_end")) else None,
+                "prog": bool(r.get("progresivo", False)),
+                "area": bool(r.get("en_area_start", False)),
+                "t":  float(r["Start time"]) if pd.notna(r.get("Start time")) else 0,
+                "tags":    str(r.get("Ungrouped") or "") if pd.notna(r.get("Ungrouped")) else "",
+                "partido": str(r.get("Timeline") or "") if pd.notna(r.get("Timeline")) else "",
+            })
+    return jsonify(acciones)
 
 
 @app.route("/api/individual", methods=["POST"])
