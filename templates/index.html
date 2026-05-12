@@ -887,9 +887,9 @@ window.addEventListener('DOMContentLoaded', () => {
   document.body.appendChild(tip);
 
   document.addEventListener('mouseover', e => {
-    const g = e.target.closest && e.target.closest('[data-tip]');
+    const g = e.target.closest && e.target.closest('[data-pitch-tip]');
     if (!g) return;
-    tip.textContent = g.getAttribute('data-tip');
+    tip.textContent = g.getAttribute('data-pitch-tip');
     tip.style.display = 'block';
   });
   document.addEventListener('mousemove', e => {
@@ -900,10 +900,10 @@ window.addEventListener('DOMContentLoaded', () => {
     tip.style.top  = y + 'px';
   });
   document.addEventListener('mouseout', e => {
-    const g = e.target.closest && e.target.closest('[data-tip]');
+    const g = e.target.closest && e.target.closest('[data-pitch-tip]');
     if (!g) return;
     const rel = e.relatedTarget;
-    if (rel && rel.closest && rel.closest('[data-tip]') === g) return;
+    if (rel && rel.closest && rel.closest('[data-pitch-tip]') === g) return;
     tip.style.display = 'none';
   });
 });
@@ -2353,7 +2353,7 @@ function dibujarCancha(acciones, modo = 'calor') {
       const color = out === 'neg' ? '#CC0000'
                   : a.area        ? '#f5a623'
                   :                 '#3ecf8e';
-      svg += `<g data-tip="${escAttr(_tituloAccion(a))}" style="cursor:default">` +
+      svg += `<g data-pitch-tip="${escAttr(_tituloAccion(a))}" style="cursor:default">` +
              `<circle cx="${a.x}" cy="${a.y}" r="3" fill="transparent"/>` +
              `<circle cx="${a.x}" cy="${a.y}" r="1.1" fill="${color}" opacity="0.85"/>` +
              `</g>`;
@@ -2365,7 +2365,7 @@ function dibujarCancha(acciones, modo = 'calor') {
       const color = out === 'neg' ? '#CC0000'
                   : destEnArea    ? '#f5a623'
                   :                 '#3ecf8e';
-      svg += `<g data-tip="${escAttr(_tituloAccion(a))}" style="cursor:default">` +
+      svg += `<g data-pitch-tip="${escAttr(_tituloAccion(a))}" style="cursor:default">` +
              `<line x1="${a.x}" y1="${a.y}" x2="${a.xe}" y2="${a.ye}" stroke="${color}" stroke-width="0.6" opacity="0.5"/>` +
              `<line x1="${a.x}" y1="${a.y}" x2="${a.xe}" y2="${a.ye}" stroke="${color}" stroke-width="0.4" opacity="0.9"/>` +
              `<circle cx="${a.xe}" cy="${a.ye}" r="0.9" fill="${color}" opacity="0.98"/>` +
