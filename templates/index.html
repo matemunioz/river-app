@@ -2299,9 +2299,11 @@ function dibujarCancha(acciones, modo = 'calor') {
     });
   } else if (modo === 'flechas') {
     acciones.filter(a => a.prog && a.xe != null && a.ye != null).forEach(a => {
+      const out = _outcomeAccion(a.tags);
       const destEnArea = a.xe >= 102 && a.ye >= 18 && a.ye <= 62;
-      const destEnUlt3 = a.xe >= 80;
-      const color = destEnArea ? '#f5a623' : destEnUlt3 ? '#3ecf8e' : '#CC0000';
+      const color = out === 'neg' ? '#CC0000'
+                  : destEnArea    ? '#f5a623'
+                  :                 '#3ecf8e';
       svg += `<g data-tip="${escAttr(_tituloAccion(a))}" style="cursor:default">` +
              `<line x1="${a.x}" y1="${a.y}" x2="${a.xe}" y2="${a.ye}" stroke="${color}" stroke-width="0.6" opacity="0.5"/>` +
              `<line x1="${a.x}" y1="${a.y}" x2="${a.xe}" y2="${a.ye}" stroke="${color}" stroke-width="0.4" opacity="0.9"/>` +
@@ -2678,9 +2680,9 @@ function buildIndHTML(ind) {
         <span><span style="display:inline-block;width:8px;height:8px;background:#f5a623;border-radius:50%;margin-right:5px;vertical-align:middle"></span>En área rival</span>
         <span><span style="display:inline-block;width:8px;height:8px;background:#CC0000;border-radius:50%;margin-right:5px;vertical-align:middle"></span>Incompleta / pérdida</span>
       ` : pitchModo==='flechas' ? `
+        <span><span style="display:inline-block;width:10px;height:3px;background:#3ecf8e;margin-right:5px;vertical-align:middle"></span>Completa / positiva</span>
         <span><span style="display:inline-block;width:10px;height:3px;background:#f5a623;margin-right:5px;vertical-align:middle"></span>Termina en área rival</span>
-        <span><span style="display:inline-block;width:10px;height:3px;background:#3ecf8e;margin-right:5px;vertical-align:middle"></span>Termina en último tercio</span>
-        <span><span style="display:inline-block;width:10px;height:3px;background:#CC0000;margin-right:5px;vertical-align:middle"></span>Progresa pero no llega arriba</span>
+        <span><span style="display:inline-block;width:10px;height:3px;background:#CC0000;margin-right:5px;vertical-align:middle"></span>Incompleta / pérdida</span>
       ` : `
         <span>Color rojo más intenso = más acciones en esa zona · grilla 12 × 8</span>
       `}
