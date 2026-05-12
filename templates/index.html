@@ -1290,23 +1290,17 @@ function renderResultados(d) {
         </div>
       </div>
       <div class="panel-card">
-        <div class="sec-title">Rival · Llegadas (${lr.total})</div>
+        <div class="sec-title red">River · Salidas (${sp.total})</div>
         <div class="mini-grid">
-          ${miniCard('Asociado', lr.asociado)}
-          ${miniCard('Directo', lr.directo)}
-          ${miniCard('Detenidas', lr.detenidas)}
+          ${miniCard('En corto', sp.cortas)}
+          ${miniCard('En largo', sp.largas)}
+          ${miniCard('Progresa', sp.progresa, 'green')}
         </div>
-        <div class="sec-title">Carril de finalización</div>
+        <div class="sec-title">Orientación</div>
         <div class="mini-grid">
-          ${miniCard('Izquierda', lr.izq)}
-          ${miniCard('Eje', lr.eje)}
-          ${miniCard('Derecha', lr.der)}
-        </div>
-        <div class="sec-title">Remates</div>
-        <div class="mini-grid">
-          ${miniCard('Al arco', lr.tiros_arco)}
-          ${miniCard('Afuera', lr.afuera)}
-          ${miniCard('Bloqueado', lr.bloqueado)}
+          ${miniCard('Izquierda', sp.izq)}
+          ${miniCard('Eje', sp.eje)}
+          ${miniCard('Derecha', sp.der)}
         </div>
       </div>
     </div>
@@ -1377,17 +1371,23 @@ function renderResultados(d) {
   <div class="tab-panel" id="panel-defensivo">
     <div class="two-col">
       <div class="panel-card">
-        <div class="sec-title red">River · Salidas (${sp.total})</div>
+        <div class="sec-title red">Rival · Llegadas (${lr.total})</div>
         <div class="mini-grid">
-          ${miniCard('En corto', sp.cortas)}
-          ${miniCard('En largo', sp.largas)}
-          ${miniCard('Progresa', sp.progresa, 'green')}
+          ${miniCard('Asociado', lr.asociado)}
+          ${miniCard('Directo', lr.directo)}
+          ${miniCard('Detenidas', lr.detenidas)}
         </div>
-        <div class="sec-title">Orientación</div>
+        <div class="sec-title">Carril de finalización</div>
         <div class="mini-grid">
-          ${miniCard('Izquierda', sp.izq)}
-          ${miniCard('Eje', sp.eje)}
-          ${miniCard('Derecha', sp.der)}
+          ${miniCard('Izquierda', lr.izq)}
+          ${miniCard('Eje', lr.eje)}
+          ${miniCard('Derecha', lr.der)}
+        </div>
+        <div class="sec-title">Remates rivales</div>
+        <div class="mini-grid">
+          ${miniCard('Al arco', lr.tiros_arco, 'red')}
+          ${miniCard('Afuera', lr.afuera)}
+          ${miniCard('Bloqueado', lr.bloqueado)}
         </div>
       </div>
       <div class="panel-card">
@@ -1776,11 +1776,34 @@ function dibujarScatter(jugadores) {
   // Labels
   svg += `<text x="${(W+padL-padR)/2}" y="${H-10}" fill="#ccc" font-size="12" text-anchor="middle">${xLab}</text>`;
   svg += `<text x="${padL-45}" y="${(H+padT-padB)/2}" fill="#ccc" font-size="12" text-anchor="middle" transform="rotate(-90 ${padL-45} ${(H+padT-padB)/2})">${yLab}</text>`;
-  // Puntos
-  pts.forEach(p => {
+  // Puntos + etiquetas con anti-overflow y anti-colisión simple
+  const minX = padL + 2, maxX = W - padR - 2;
+  const minY = padT + 8, maxY = H - padB - 4;
+  const labelInfo = pts.map(p => {
     const cx = sx(p.x), cy = sy(p.y);
-    svg += `<circle class="scatter-dot" cx="${cx}" cy="${cy}" r="5" fill="#CC0000" opacity="0.85"><title>${p.nombre}\n${xLab}: ${p.x}\n${yLab}: ${p.y}</title></circle>`;
-    svg += `<text x="${cx+8}" y="${cy+3}" fill="#f5f5f5" font-size="10">${p.nombre}</text>`;
+    const apellido = (p.nombre.split(' ').slice(-1)[0] || p.nombre).slice(0, 12);
+    // Lado del label según el espacio disponible
+    const espacioDer = maxX - cx, espacioIzq = cx - minX;
+    const ladoIzq = espacioDer < 80 && espacioIzq > espacioDer;
+    let lx = ladoIzq ? cx - 8 : cx + 8;
+    let ly = cy + 3;
+    if (cy < minY + 14) ly = cy + 14;
+    if (cy > maxY - 4)  ly = cy - 8;
+    return { cx, cy, lx, ly, anchor: ladoIzq ? 'end' : 'start', nombre: apellido, original: p.nombre, vx: p.x, vy: p.y };
+  });
+
+  // Anti-colisión simple: si dos labels están a < 12px en Y, desplazo el segundo
+  labelInfo.sort((a,b) => a.cy - b.cy);
+  for (let i = 1; i < labelInfo.length; i++) {
+    const cur = labelInfo[i], prev = labelInfo[i-1];
+    if (Math.abs(cur.lx - prev.lx) < 60 && Math.abs(cur.ly - prev.ly) < 11) {
+      cur.ly = Math.min(maxY, prev.ly + 11);
+    }
+  }
+
+  labelInfo.forEach(p => {
+    svg += `<circle class="scatter-dot" cx="${p.cx}" cy="${p.cy}" r="5" fill="#CC0000" opacity="0.85"><title>${p.original}\n${xLab}: ${p.vx}\n${yLab}: ${p.vy}</title></circle>`;
+    svg += `<text x="${p.lx}" y="${p.ly}" fill="#f5f5f5" font-size="10" text-anchor="${p.anchor}" style="paint-order:stroke;stroke:#0a0a0a;stroke-width:2.5;stroke-linejoin:round">${p.nombre}</text>`;
   });
   svg += '</svg>';
   return svg;
@@ -2062,7 +2085,23 @@ const METRICAS_FODA = [
   { k: 'ruptura',            l: 'Rupturas en conducción',     minVal: 1 },
   { k: 'recep_lineas',       l: 'Recepciones entre líneas',   minVal: 1 },
   { k: 'recep_espacio',      l: 'Recepciones al espacio',     minVal: 1 },
-  { k: 'perd_total',         l: 'Pérdidas',                   invert: true, minVal: 4 },
+  // perd_total queda fuera — usamos su tasa por intervención (ver lógica abajo)
+];
+
+// Ratios derivados — se computan sobre la marcha en analisisFoda
+// `derive(j)` devuelve el valor a comparar; queda normalizado por intervenciones
+const METRICAS_FODA_RATIO = [
+  { k: 'perd_ratio',
+    l: 'Pérdidas por intervención',
+    derive: (j) => (j.intervenciones||0) ? (j.perd_total||0) / (j.intervenciones||1) : 0,
+    fmt: (v) => (v * 100).toFixed(1) + '%',
+    invert: true,
+    minN: 30 },           // sólo evalúa jugadores con ≥30 intervenciones
+  { k: 'pases_efect',
+    l: 'Efectividad de pase',
+    derive: (j) => j.pases_efect || 0,
+    fmt: (v) => v + '%',
+    minVal: 30 },
 ];
 
 function _percentil(valor, valores) {
@@ -2085,15 +2124,28 @@ function analisisFoda(ind, todos) {
   METRICAS_FODA.forEach(m => {
     const v = ind[m.k] || 0;
     const valores = candidatos.map(j => j[m.k] || 0);
+    if (!valores.length || Math.max(...valores) === 0) return;
     let pct = _percentil(v, valores);
-    // Para métricas invertidas, "alto valor" es malo, así que invierto el percentil para que "100" siga siendo bueno
     if (m.invert) pct = 100 - pct;
-    if (m.minVal != null && (m.invert ? v < m.minVal : v < m.minVal)) {
-      // Si no tiene suficiente volumen, sólo se considera para destacar negativos
-      if (m.invert && v >= m.minVal) {} // no aplica
-      else if (!m.invert) return;
+    if (m.minVal != null && v < m.minVal) {
+      if (!m.invert) return;
     }
     const display = v + (m.unidad || '');
+    if (pct >= 80) fortalezas.push({ label: m.l, valor: display, pct });
+    else if (pct <= 25) debilidades.push({ label: m.l, valor: display, pct });
+  });
+
+  // Métricas derivadas: ratios normalizados (ej: pérdidas / intervención)
+  METRICAS_FODA_RATIO.forEach(m => {
+    if (m.minN && (ind.intervenciones || 0) < m.minN) return;
+    const v = m.derive(ind);
+    const valores = candidatos
+      .filter(j => !m.minN || (j.intervenciones || 0) >= m.minN)
+      .map(j => m.derive(j));
+    if (!valores.length || Math.max(...valores) === 0) return;
+    let pct = _percentil(v, valores);
+    if (m.invert) pct = 100 - pct;
+    const display = m.fmt(v);
     if (pct >= 80) fortalezas.push({ label: m.l, valor: display, pct });
     else if (pct <= 25) debilidades.push({ label: m.l, valor: display, pct });
   });
@@ -2124,9 +2176,23 @@ function analisisFoda(ind, todos) {
   }
 
   // ── AMENAZAS: patrones de riesgo ────────────────────────────────────
-  // Muchas pérdidas en zona baja
-  if ((ind.perd_total || 0) >= 5 && (ind.centro_grav_x || 50) < 50) {
-    amenazas.push({ label: 'Concentra pérdidas en zona propia', valor: `${ind.perd_total} pérd.` });
+  // Pérdidas — normalizadas por intervenciones para no penalizar al jugador
+  // con más volumen de juego. Solo se considera amenaza si su tasa supera p70
+  // del plantel (ajustada al volumen) Y la zona es baja.
+  if ((ind.intervenciones || 0) >= 30) {
+    const ratio = (ind.perd_total || 0) / ind.intervenciones;
+    const ratios = candidatos
+      .filter(j => (j.intervenciones || 0) >= 30)
+      .map(j => (j.perd_total || 0) / (j.intervenciones || 1));
+    const pctRatio = _percentil(ratio, ratios);
+    if (pctRatio >= 70) {
+      const pctStr = (ratio * 100).toFixed(1) + '%';
+      if ((ind.centro_grav_x || 50) < 50) {
+        amenazas.push({ label: 'Pérdidas concentradas en zona propia', valor: `${pctStr} de sus acciones` });
+      } else {
+        amenazas.push({ label: 'Alta tasa de pérdida por intervención', valor: `${pctStr} (${ind.perd_total||0}/${ind.intervenciones})` });
+      }
+    }
   }
   // Pierde duelos defensivos
   const dad = (ind.dad_plus||0) + (ind.dad_minus||0);
@@ -2234,6 +2300,39 @@ function renderMatriz(titulo, mat, ordenFilas, ordenCols) {
 // ─── Cancha 2D + heatmap ─────────────────────────────────────────────────
 let pitchModo = 'calor'; // 'calor' | 'puntos' | 'flechas'
 let coordsActuales = [];
+let mostrarCG = true;    // overlay de centro de gravedad + dispersión
+// Filtro de tipo de acción en la cancha (default: todos activos)
+const CATS_ACCION = [
+  ['pases',   'Pases',           ['PCompletos','PIncompletos','PASES']],
+  ['centros', 'Centros',         ['CCompletos','CIncompletos','CENTROS','CAsistencia']],
+  ['recup',   'Recuperaciones',  ['RECUPERACION xPosicional','RECUPERACION xIntervencion','Tras Perdida']],
+  ['perd',    'Pérdidas',        ['PERDIDAS: xPase','PERDIDAS: xControl','PERDIDAS: xGambeta']],
+  ['remates', 'Remates',         ['Tiros','Arco','Afuera','Bloqueado','Gol']],
+  ['duelos',  'Duelos',          ['Duelos 1V1','1v1O+','1v1O-','1v1D+','1v1D-','Duelos Aereos','DAO+','DAO-','DAD+','DAD-','Regates','R+','R-']],
+  ['defensa', 'Defensa',         ['Intervencion Defensiva','Despeje','Bloqueos','Entradas','Intercepciones','E+','E-','I+','I-','B+','B-','A+','A-']],
+  ['recep',   'Recepciones',     ['Recepcion entre Lineas','Recepcion al espacio','Recepcion a espaldas del volante','Toques en Area Rival','Ruptura en conduccion']],
+];
+let accionFiltros = new Set(CATS_ACCION.map(c => c[0]));
+
+function _catsDeAccion(tagsStr) {
+  if (!tagsStr) return new Set();
+  const t = new Set(tagsStr.split(',').map(s => s.trim()));
+  const cats = new Set();
+  CATS_ACCION.forEach(([id, _, tagSet]) => {
+    if (tagSet.some(tag => t.has(tag))) cats.add(id);
+  });
+  return cats;
+}
+
+function _filtrarPorCat(acciones) {
+  if (accionFiltros.size === CATS_ACCION.length) return acciones; // todos activos
+  return acciones.filter(a => {
+    const cats = _catsDeAccion(a.tags || '');
+    if (cats.size === 0) return false;
+    for (const c of cats) if (accionFiltros.has(c)) return true;
+    return false;
+  });
+}
 
 function _pitchLines(lc = '#777', lw = 0.22) {
   let s = '';
@@ -2352,8 +2451,9 @@ function _tituloAccion(a) {
 }
 
 function dibujarCancha(acciones, modo = 'calor') {
-  // Nacsport: y crece hacia un lado y el SVG hacia el otro — invertimos para
-  // que las acciones de los laterales caigan en su carril correcto.
+  // 1) Filtrar por categoría de acción (si el usuario destildó alguna)
+  acciones = _filtrarPorCat(acciones);
+  // 2) Flip de y para mostrar laterales en su lado correcto
   acciones = acciones.map(a => ({
     ...a,
     y:  80 - a.y,
@@ -2413,6 +2513,24 @@ function dibujarCancha(acciones, modo = 'calor') {
     });
   }
 
+  // Overlay: centro de gravedad + elipse de dispersión
+  if (mostrarCG && acciones.length >= 5) {
+    const n = acciones.length;
+    const cgX = acciones.reduce((s,a) => s + a.x, 0) / n;
+    const cgY = acciones.reduce((s,a) => s + a.y, 0) / n;
+    const varX = acciones.reduce((s,a) => s + (a.x - cgX) ** 2, 0) / n;
+    const varY = acciones.reduce((s,a) => s + (a.y - cgY) ** 2, 0) / n;
+    const dx = Math.max(2, Math.sqrt(varX));
+    const dy = Math.max(2, Math.sqrt(varY));
+    // Elipse de dispersión (1σ)
+    svg += `<ellipse cx="${cgX}" cy="${cgY}" rx="${dx}" ry="${dy}" fill="#ffffff" fill-opacity="0.04" stroke="#ffffff" stroke-width="0.45" stroke-dasharray="2,1.5" opacity="0.85"/>`;
+    // Marker del CG
+    svg += `<circle cx="${cgX}" cy="${cgY}" r="2.6" fill="#ffffff" opacity="0.35"/>`;
+    svg += `<circle cx="${cgX}" cy="${cgY}" r="1.5" fill="#CC0000" stroke="#ffffff" stroke-width="0.5"/>`;
+    // Label
+    svg += `<text x="${cgX + 3}" y="${cgY - 2.5}" fill="#fff" font-size="2.6" font-weight="bold">CG</text>`;
+  }
+
   svg += '</svg>';
   return svg;
 }
@@ -2425,6 +2543,32 @@ function setPitchModo(m) {
     b.classList.toggle('active',
       (i === 0 && m === 'calor') || (i === 1 && m === 'puntos') || (i === 2 && m === 'flechas'));
   });
+}
+
+function _redibujarCancha() {
+  const cont = document.getElementById('pitch-container');
+  if (cont) cont.innerHTML = dibujarCancha(coordsActuales, pitchModo);
+}
+
+function onAccionFiltroToggle() {
+  accionFiltros = new Set();
+  document.querySelectorAll('#pitch-acciones-filter input[type=checkbox][data-cat]').forEach(b => {
+    if (b.checked) accionFiltros.add(b.dataset.cat);
+  });
+  _redibujarCancha();
+}
+
+function setAccionFiltros(allOn) {
+  accionFiltros = new Set(allOn ? CATS_ACCION.map(c => c[0]) : []);
+  document.querySelectorAll('#pitch-acciones-filter input[type=checkbox][data-cat]').forEach(b => {
+    b.checked = allOn;
+  });
+  _redibujarCancha();
+}
+
+function toggleCG(on) {
+  mostrarCG = on;
+  _redibujarCancha();
 }
 
 async function fetchCoordsJugador(jugador) {
@@ -2772,6 +2916,20 @@ function buildIndHTML(ind) {
         <button class="${pitchModo==='puntos'?'active':''}"  onclick="setPitchModo('puntos')">⦿ Puntos</button>
         <button class="${pitchModo==='flechas'?'active':''}" onclick="setPitchModo('flechas')">➤ Progresivas</button>
       </div>
+    </div>
+    <div id="pitch-acciones-filter" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center">
+      <span style="font-size:10px;color:var(--gris5);text-transform:uppercase;letter-spacing:.5px;margin-right:4px">Acciones:</span>
+      ${CATS_ACCION.map(([id,lbl]) => `
+        <label class="part-chip" style="padding:3px 9px">
+          <input type="checkbox" data-cat="${id}" ${accionFiltros.has(id)?'checked':''} onchange="onAccionFiltroToggle()">
+          <span style="font-size:10.5px">${lbl}</span>
+        </label>`).join('')}
+      <button class="btn" style="padding:3px 9px;font-size:10.5px" onclick="setAccionFiltros(true)">Todos</button>
+      <button class="btn" style="padding:3px 9px;font-size:10.5px" onclick="setAccionFiltros(false)">Ninguno</button>
+      <label class="part-chip" style="padding:3px 9px;margin-left:auto" title="Mostrar centro de gravedad y elipse de dispersión">
+        <input type="checkbox" ${mostrarCG?'checked':''} onchange="toggleCG(this.checked)">
+        <span style="font-size:10.5px">🎯 CG + dispersión</span>
+      </label>
     </div>
     <div id="pitch-container">${dibujarCancha(coordsActuales, pitchModo)}</div>
     <div class="pitch-leyenda">
