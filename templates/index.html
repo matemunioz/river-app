@@ -1124,12 +1124,20 @@ async function analizarConFiltro({ mostrarStatus = false } = {}) {
     fetchJugadoresStats().then(ds => {
       if (!ds) return;
       datosJugadores = ds;
+      // Inicializar selección de jugadores si está vacía
+      if (!jugadoresSel.size) {
+        jugadoresSel = new Set(Object.keys(ds));
+      }
+      _sincronizarChipsJugadores();
       if (!jugadorActivo) {
         jugadorActivo = jugadorDestacado(ds);
         const inp = document.getElementById('jug-select');
         if (inp && jugadorActivo) inp.value = jugadorActivo;
       }
       if (jugadorActivo) renderIndividual(jugadorActivo);
+      // Re-render colectivo/creador si están activos
+      if (tabActiva === 'colectivo') renderColContent();
+      else if (tabActiva === 'creador') renderCreadorContent();
     });
   } catch(e) {
     showError('No se pudo conectar con el servidor. ¿Está corriendo app.py?');
@@ -1180,6 +1188,18 @@ function switchTab(id, el) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('panel-' + id).classList.add('active');
+  // Auto-init de paneles que dependen de datosJugadores
+  if (id === 'colectivo' || id === 'creador') {
+    (async () => {
+      if (!datosJugadores) datosJugadores = await fetchJugadoresStats();
+      if (datosJugadores && !jugadoresSel.size) {
+        jugadoresSel = new Set(Object.keys(datosJugadores));
+        document.querySelectorAll('[data-jug]').forEach(b => { b.checked = jugadoresSel.has(b.dataset.jug); });
+      }
+      if (id === 'colectivo') renderColContent();
+      else renderCreadorContent();
+    })();
+  }
 }
 
 function renderResultados(d) {
@@ -1291,10 +1311,12 @@ function renderResultados(d) {
   <div class="section">
     <div class="tabs">
       <div class="tab active" onclick="switchTab('individual',this)">👤 Individual</div>
+      <div class="tab" onclick="switchTab('colectivo',this)">👥 Colectivo</div>
       <div class="tab" onclick="switchTab('comparativa',this)">⚖ Resumen</div>
       <div class="tab" onclick="switchTab('ofensivo',this)">⚽ Ofensivo</div>
       <div class="tab" onclick="switchTab('defensivo',this)">🛡 Defensivo</div>
       <div class="tab" onclick="switchTab('plantel',this)">👥 Plantel</div>
+      <div class="tab" onclick="switchTab('creador',this)">🎨 Creador de gráficos</div>
     </div>
 
   <!-- RESUMEN (Comparativa) -->
@@ -1397,17 +1419,6 @@ function renderResultados(d) {
           </div>
         </div>
       </div>
-      <div class="sec-title">Línea temporal de goles</div>
-      ${goles.length ? goles.map(g => `
-        <div class="gol-item">
-          <div class="gol-min">${g.minuto}</div>
-          <div class="gol-eq ${g.equipo === 'Propio' ? 'river' : 'rival'}">${g.equipo === 'Propio' ? 'RIVER' : 'RIVAL'}</div>
-          <div class="gol-info">
-            <div class="gol-tipo">${g.tipo}</div>
-            <div class="gol-carril">${g.carril}</div>
-          </div>
-          <div style="font-size:10px;color:var(--gris5)">${g.remate}</div>
-        </div>`).join('') : '<p style="color:var(--gris5);padding:1rem 0">No se registraron goles.</p>'}
     </div>
 
     <div class="section">
@@ -1424,6 +1435,20 @@ function renderResultados(d) {
         ${renderMatriz('Por tipo de jugada',  col.matriz_llegadas,  ['Asociado','Directo','Detenidas'], ['Izquierda','Eje','Derecha'])}
         ${renderMatriz('Por amplitud usada',  col.matriz_amp_carril, ['1 Carril','2 Carriles','3 Carriles'], ['Izquierda','Eje','Derecha'])}
       </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-title">Línea temporal de goles</div></div>
+      ${goles.length ? goles.map(g => `
+        <div class="gol-item">
+          <div class="gol-min">${g.minuto}</div>
+          <div class="gol-eq ${g.equipo === 'Propio' ? 'river' : 'rival'}">${g.equipo === 'Propio' ? 'RIVER' : 'RIVAL'}</div>
+          <div class="gol-info">
+            <div class="gol-tipo">${g.tipo}</div>
+            <div class="gol-carril">${g.carril}</div>
+          </div>
+          <div style="font-size:10px;color:var(--gris5)">${g.remate}</div>
+        </div>`).join('') : '<p style="color:var(--gris5);padding:1rem 0">No se registraron goles.</p>'}
     </div>
   </div>
 
@@ -1549,42 +1574,47 @@ function renderResultados(d) {
 
   <!-- INDIVIDUAL -->
   <div class="tab-panel active" id="panel-individual">
-    <div class="ind-subtabs">
-      <div class="ind-subtab ${vistaInd==='jugador'?'active':''}" onclick="setVistaInd('jugador')">🧑 Jugador</div>
-      <div class="ind-subtab ${vistaInd==='colectivo'?'active':''}" onclick="setVistaInd('colectivo')">👥 Colectivo de jugadores</div>
+    <div class="ind-selector">
+      <label>Jugador:</label>
+      <div class="combo" id="jug-combo">
+        <input id="jug-select" type="text" placeholder="Buscar jugador…" autocomplete="off"
+               onfocus="comboAbrir()" oninput="comboFiltrar(this.value)"
+               onkeydown="comboTecla(event)">
+        <div class="combo-list" id="jug-combo-list"></div>
+      </div>
+      <button class="btn btn-red" onclick="exportarPDF('individual')">⬇ PDF Individual</button>
     </div>
+    <div id="ind-content"></div>
+  </div>
 
-    <div id="ind-jugador-view" style="display:${vistaInd==='jugador'?'block':'none'}">
-      <div class="ind-selector">
-        <label>Jugador:</label>
-        <div class="combo" id="jug-combo">
-          <input id="jug-select" type="text" placeholder="Buscar jugador…" autocomplete="off"
-                 onfocus="comboAbrir()" oninput="comboFiltrar(this.value)"
-                 onkeydown="comboTecla(event)">
-          <div class="combo-list" id="jug-combo-list"></div>
-        </div>
-        <button class="btn btn-red" onclick="exportarPDF('individual')">⬇ PDF Individual</button>
-      </div>
-      <div id="ind-content"></div>
+  <!-- COLECTIVO (suma de jugadores) -->
+  <div class="tab-panel" id="panel-colectivo">
+    <div id="jug-filter" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:1rem;align-items:center">
+      <span style="font-size:10px;color:var(--gris5);text-transform:uppercase;letter-spacing:.5px;margin-right:4px">Jugadores:</span>
+      ${jugadores.map(j => `
+        <label class="part-chip">
+          <input type="checkbox" data-jug="${j}" ${jugadoresSel.has(j)?'checked':''} onchange="onJugadorToggle()">
+          <span>${j}</span>
+        </label>`).join('')}
+      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="toggleJugadores(true)">Todos</button>
+      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="toggleJugadores(false)">Ninguno</button>
     </div>
+    <div id="col-content"><p style="color:var(--gris5)">Cargando...</p></div>
+  </div>
 
-    <div id="ind-colectivo-view" style="display:${vistaInd==='colectivo'?'block':'none'}">
-      <div id="jug-filter" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:1rem;align-items:center">
-        <span style="font-size:10px;color:var(--gris5);text-transform:uppercase;letter-spacing:.5px;margin-right:4px">Jugadores:</span>
-        ${jugadores.map(j => `
-          <label class="part-chip">
-            <input type="checkbox" data-jug="${j}" ${jugadoresSel.has(j)?'checked':''} onchange="onJugadorToggle()">
-            <span>${j}</span>
-          </label>`).join('')}
-        <button class="btn" style="padding:4px 10px;font-size:11px" onclick="toggleJugadores(true)">Todos</button>
-        <button class="btn" style="padding:4px 10px;font-size:11px" onclick="toggleJugadores(false)">Ninguno</button>
-      </div>
-      <div class="col-modos">
-        <button class="${modoColectivo==='suma'?'active':''}" onclick="setModoColectivo('suma')">📋 Suma</button>
-        <button class="${modoColectivo==='scatter'?'active':''}" onclick="setModoColectivo('scatter')">🎨 Creador de gráficos</button>
-      </div>
-      <div id="col-content"><p style="color:var(--gris5)">Cargando...</p></div>
+  <!-- CREADOR DE GRÁFICOS -->
+  <div class="tab-panel" id="panel-creador">
+    <div id="jug-filter-creador" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:1rem;align-items:center">
+      <span style="font-size:10px;color:var(--gris5);text-transform:uppercase;letter-spacing:.5px;margin-right:4px">Jugadores:</span>
+      ${jugadores.map(j => `
+        <label class="part-chip">
+          <input type="checkbox" data-jug="${j}" ${jugadoresSel.has(j)?'checked':''} onchange="onJugadorToggleCreador()">
+          <span>${j}</span>
+        </label>`).join('')}
+      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="toggleJugadores(true)">Todos</button>
+      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="toggleJugadores(false)">Ninguno</button>
     </div>
+    <div id="creador-content"><p style="color:var(--gris5)">Cargando...</p></div>
   </div>
   </div>
   `;
@@ -1599,10 +1629,8 @@ function renderResultados(d) {
     if (tabEl) switchTab(tabActiva, tabEl);
   }
 
-  // Restaurar vista colectiva (refetch porque cambiaron los partidos)
-  if (tabActiva === 'individual' && vistaInd === 'colectivo') {
-    setVistaInd('colectivo');
-  }
+  // Re-render paneles que dependen de datosJugadores cuando la tab activa lo necesita
+  // (datosJugadores se vuelve a fetchear en analizarConFiltro y dispara el callback)
 
   // Restaurar jugador activo
   if (jugadorActivo) {
@@ -1762,17 +1790,42 @@ function setModoColectivo(m) {
   renderColContent();
 }
 
+function _sincronizarChipsJugadores() {
+  // Sincroniza los chips de jugador entre los paneles Colectivo y Creador (comparten state)
+  document.querySelectorAll('#jug-filter input[type=checkbox], #jug-filter-creador input[type=checkbox]').forEach(b => {
+    b.checked = jugadoresSel.has(b.dataset.jug);
+  });
+}
+
+function _refrescarColYCreador() {
+  if (tabActiva === 'colectivo') renderColContent();
+  else if (tabActiva === 'creador') renderCreadorContent();
+}
+
 function onJugadorToggle() {
+  // Click en chip dentro del panel Colectivo
   jugadoresSel = new Set();
   document.querySelectorAll('#jug-filter input[type=checkbox]').forEach(b => {
     if (b.checked) jugadoresSel.add(b.dataset.jug);
   });
-  renderColContent();
+  _sincronizarChipsJugadores();
+  _refrescarColYCreador();
+}
+
+function onJugadorToggleCreador() {
+  // Click en chip dentro del panel Creador
+  jugadoresSel = new Set();
+  document.querySelectorAll('#jug-filter-creador input[type=checkbox]').forEach(b => {
+    if (b.checked) jugadoresSel.add(b.dataset.jug);
+  });
+  _sincronizarChipsJugadores();
+  _refrescarColYCreador();
 }
 
 function toggleJugadores(on) {
-  document.querySelectorAll('#jug-filter input[type=checkbox]').forEach(b => b.checked = on);
-  onJugadorToggle();
+  jugadoresSel = on && datosJugadores ? new Set(Object.keys(datosJugadores)) : new Set();
+  _sincronizarChipsJugadores();
+  _refrescarColYCreador();
 }
 
 function sumarJugadores(lista) {
@@ -1954,21 +2007,21 @@ function renderColContent() {
     cont.innerHTML = '<p style="color:var(--gris5)">Seleccioná al menos un jugador.</p>';
     return;
   }
-  if (modoColectivo === 'suma') {
-    if (!seleccionados.length) {
-      cont.innerHTML = '<p style="color:var(--gris5)">Seleccioná al menos un jugador.</p>';
-      return;
-    }
-    const sum = sumarJugadores(seleccionados);
-    sum.jugador = `Colectivo · ${seleccionados.length} jugadores`;
-    sum.condicion = `${seleccionados.length} jugadores`;
-    sum.__promedio = promediarJugadores(seleccionados);
-    sum.__esColectivo = true;
-    sum.__seleccionados = seleccionados;
-    cont.innerHTML = buildIndHTML(sum);
-  } else {
-    cont.innerHTML = renderCreadorGraficos(seleccionados);
-  }
+  const sum = sumarJugadores(seleccionados);
+  sum.jugador = `Colectivo · ${seleccionados.length} jugadores`;
+  sum.condicion = `${seleccionados.length} jugadores`;
+  sum.__promedio = promediarJugadores(seleccionados);
+  sum.__esColectivo = true;
+  sum.__seleccionados = seleccionados;
+  cont.innerHTML = buildIndHTML(sum);
+}
+
+function renderCreadorContent() {
+  const cont = document.getElementById('creador-content');
+  if (!cont) return;
+  if (!datosJugadores) { cont.innerHTML = '<p style="color:var(--gris5)">Cargando...</p>'; return; }
+  const seleccionados = Array.from(jugadoresSel).filter(j => datosJugadores[j]);
+  cont.innerHTML = renderCreadorGraficos(seleccionados);
 }
 
 function renderCreadorGraficos(seleccionados) {
@@ -2030,13 +2083,13 @@ function renderCreadorGraficos(seleccionados) {
 
 function setChartType(t) {
   chartType = t;
-  renderColContent();
+  renderCreadorContent();
 }
 
 function toggleRadarMetric(k, on) {
   if (on && !radarMetrics.includes(k)) radarMetrics.push(k);
   else if (!on) radarMetrics = radarMetrics.filter(x => x !== k);
-  renderColContent();
+  renderCreadorContent();
 }
 
 function presetJugadores(preset) {
@@ -2052,16 +2105,16 @@ function presetJugadores(preset) {
     const ordenados = todos.slice().sort((a,b) => (datosJugadores[b].minutos||0) - (datosJugadores[a].minutos||0)).slice(0,5);
     jugadoresSel = new Set(ordenados);
   }
-  document.querySelectorAll('#jug-filter input[type=checkbox]').forEach(b => {
-    b.checked = jugadoresSel.has(b.dataset.jug);
-  });
-  renderColContent();
+  _sincronizarChipsJugadores();
+  renderCreadorContent();
   if (preset === 'duo') {
-    const cont = document.getElementById('col-content');
-    const hint = document.createElement('div');
-    hint.style.cssText = 'background:rgba(245,166,35,.1);border:1px solid var(--ambar);color:var(--ambar);padding:8px 12px;border-radius:6px;font-size:11px;margin-bottom:1rem';
-    hint.textContent = '⚔ Modo Duo — tildá 2 jugadores arriba para compararlos';
-    cont.insertBefore(hint, cont.firstChild);
+    const cont = document.getElementById('creador-content');
+    if (cont) {
+      const hint = document.createElement('div');
+      hint.style.cssText = 'background:rgba(245,166,35,.1);border:1px solid var(--ambar);color:var(--ambar);padding:8px 12px;border-radius:6px;font-size:11px;margin-bottom:1rem';
+      hint.textContent = '⚔ Modo Duo — tildá 2 jugadores arriba para compararlos';
+      cont.insertBefore(hint, cont.firstChild);
+    }
   }
 }
 
