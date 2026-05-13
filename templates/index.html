@@ -729,7 +729,7 @@
     .beeswarm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
     .beeswarm-svg { background: var(--gris2); border: 1px solid var(--gris3); border-radius: 6px; width: 100%; height: auto; }
 
-    /* ANÁLISIS DEL JUGADOR (párrafo) */
+    /* ANÁLISIS DEL JUGADOR (párrafo con efecto máquina) */
     .analisis-jug {
       margin-top: 18px;
       background: linear-gradient(135deg, var(--gris2), rgba(204,0,0,0.05));
@@ -739,12 +739,32 @@
     .analisis-jug-titulo {
       font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
       text-transform: uppercase; color: var(--rojo); margin-bottom: 8px;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
     }
+    .analisis-jug-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 9px; font-weight: 600; letter-spacing: .8px;
+      padding: 3px 9px; border-radius: 12px;
+      background: linear-gradient(135deg, rgba(204,0,0,.18), rgba(232,38,126,.15));
+      border: 1px solid rgba(204,0,0,.4); color: var(--grisc);
+      text-transform: uppercase;
+    }
+    .analisis-jug-badge::before {
+      content: '✨'; font-size: 10px;
+    }
+    .analisis-jug-badge b { color: var(--rojo); font-weight: 800; }
     .analisis-jug p {
       font-size: 13px; line-height: 1.6; color: var(--blanco);
+      min-height: 1.6em;
     }
     .analisis-jug p b { color: var(--rojo); font-weight: 700; }
     .analisis-jug p i { color: var(--ambar); font-style: normal; font-weight: 600; }
+    .cursor-tipeo {
+      display: inline-block; width: 7px; height: 14px;
+      background: var(--rojo); vertical-align: middle;
+      margin-left: 2px; animation: blink-cursor .9s steps(2, end) infinite;
+    }
+    @keyframes blink-cursor { 0%, 50% { opacity: 1 } 51%, 100% { opacity: 0 } }
 
     .error-box { background: rgba(204,0,0,.1); border: 1px solid var(--rojo); border-radius: 6px; padding: 10px 14px; color: var(--rojo); font-size: 12px; margin-top: 1rem; }
   </style>
@@ -1684,6 +1704,7 @@ function renderIndividual(jugador) {
   ]).then(([ind, coords]) => {
     coordsActuales = coords || [];
     document.getElementById('ind-content').innerHTML = buildIndHTML(ind);
+    iniciarMaquinaEscribir();
   }).catch(() => {
     coordsActuales = [];
     document.getElementById('ind-content').innerHTML = `<p style="color:var(--gris5)">Sin datos individuales disponibles para ${jugador}.</p>`;
@@ -2102,6 +2123,66 @@ function dibujarRadar(jugadores) {
   });
   svg += '</svg>';
   return svg;
+}
+
+// ─── Efecto máquina de escribir (para "Análisis del jugador") ───────────
+function _tokensHtml(html) {
+  // Parsea en tokens {t:'tag'|'text', s}
+  const out = [];
+  let i = 0;
+  while (i < html.length) {
+    if (html[i] === '<') {
+      const j = html.indexOf('>', i);
+      if (j === -1) { out.push({ t: 'text', s: html.slice(i) }); break; }
+      out.push({ t: 'tag', s: html.slice(i, j + 1) });
+      i = j + 1;
+    } else {
+      const j = html.indexOf('<', i);
+      const end = j === -1 ? html.length : j;
+      out.push({ t: 'text', s: html.slice(i, end) });
+      i = end;
+    }
+  }
+  return out;
+}
+
+function escribirMaquina(el, html, opts = {}) {
+  const charsPerStep = opts.chars || 2;
+  const delay = opts.delay || 9;
+  if (!el || el.dataset.tipeado === '1') return;
+  el.dataset.tipeado = '1';
+  const tokens = _tokensHtml(html);
+  let tokenIdx = 0, charIdx = 0, acc = '';
+
+  function tick() {
+    if (tokenIdx >= tokens.length) {
+      el.innerHTML = acc;
+      return;
+    }
+    const tk = tokens[tokenIdx];
+    if (tk.t === 'tag') {
+      acc += tk.s;
+      tokenIdx++; charIdx = 0;
+    } else {
+      const advance = Math.min(charsPerStep, tk.s.length - charIdx);
+      acc += tk.s.slice(charIdx, charIdx + advance);
+      charIdx += advance;
+      if (charIdx >= tk.s.length) { tokenIdx++; charIdx = 0; }
+    }
+    el.innerHTML = acc + '<span class="cursor-tipeo"></span>';
+    setTimeout(tick, delay);
+  }
+  tick();
+}
+
+function iniciarMaquinaEscribir() {
+  document.querySelectorAll('.analisis-jug-text[data-content]').forEach(el => {
+    if (el.dataset.tipeado === '1') return;
+    try {
+      const txt = decodeURIComponent(el.dataset.content);
+      escribirMaquina(el, txt);
+    } catch (e) { /* ignorar */ }
+  });
 }
 
 // ─── Motor de lectura textual ────────────────────────────────────────────
@@ -3116,8 +3197,11 @@ function buildIndHTML(ind) {
       ${!esColectivo ? (() => {
         const txt = analisisJugador(ind, datosJugadores);
         return txt ? `<div class="analisis-jug">
-          <div class="analisis-jug-titulo">📝 Análisis del jugador</div>
-          <p>${txt}</p>
+          <div class="analisis-jug-titulo">
+            <span>📝 Análisis del jugador</span>
+            <span class="analisis-jug-badge">Generado por <b>River360 IA</b></span>
+          </div>
+          <p class="analisis-jug-text" data-content="${encodeURIComponent(txt)}"></p>
         </div>` : '';
       })() : ''}
     </div>
