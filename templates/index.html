@@ -158,6 +158,45 @@
       transition: border-color .2s, transform .2s;
     }
     .kpi-card:hover { border-color: var(--gris4); transform: translateY(-1px); }
+    .kpi-card.clickable { cursor: pointer; }
+    .kpi-card.clickable:hover { border-color: var(--rojo); }
+    .kpi-card.clickable.active {
+      border-color: var(--rojo); border-width: 2px;
+      box-shadow: 0 0 0 2px rgba(204,0,0,0.18);
+    }
+
+    .plantel-detalle:empty { display: none; }
+    .plantel-detalle { margin-bottom: 1.5rem; }
+    .plantel-detalle-card {
+      background: var(--gris1); border: 1px solid var(--gris3); border-left: 3px solid var(--rojo);
+      border-radius: 10px; padding: 1.2rem 1.4rem;
+      animation: fadeIn .2s ease-out;
+    }
+    .plantel-detalle-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .4rem; }
+    .plantel-detalle-titulo { font-size: 14px; font-weight: 700; color: var(--blanco); }
+    .plantel-detalle-x {
+      background: transparent; border: none; color: var(--gris5);
+      cursor: pointer; font-size: 22px; line-height: 1; padding: 0 4px;
+    }
+    .plantel-detalle-x:hover { color: var(--rojo); }
+    .plantel-detalle-expl {
+      font-size: 11.5px; color: var(--gris5); margin-bottom: 12px;
+      font-style: italic; line-height: 1.5;
+    }
+    .det-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 6px 2px; border-bottom: 1px solid var(--gris3);
+      font-size: 12px;
+    }
+    .det-item:last-child { border-bottom: none; }
+    .det-item > span:first-child { flex: 1; color: var(--blanco); }
+    .det-num { color: var(--gris5); min-width: 22px; }
+    .det-tag { color: var(--rojo); font-weight: 600; font-size: 11px; }
+    .det-sub {
+      font-size: 10px; color: var(--gris5); text-transform: uppercase;
+      letter-spacing: 1px; margin: 10px 0 4px; font-weight: 700;
+    }
+    .det-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
     .kpi-card-label { font-size: 10px; color: var(--gris5); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; font-weight: 600; }
     .kpi-card-val { font-size: 36px; font-weight: 800; line-height: 1; letter-spacing: -1px; }
     .kpi-card-val.red { color: var(--rojo); }
@@ -1432,20 +1471,21 @@ function renderResultados(d) {
       const minMax = minutos.length ? Math.max(...minutos.map(p => p.minutos || 0)) : 0;
       const jugMax = minutos.find(p => p.minutos === minMax);
       const cards = [
-        { l: 'Partidos analizados', v: nPart, color: 'red' },
-        { l: 'Minutos jugados (div.)', v: minTot, sub: `${jugUsados} jug. en cancha`, color: '' },
-        { l: 'Jugadores utilizados', v: jugUsados, sub: `${tit} tit · ${sup} sup`, color: 'red' },
-        { l: 'Núcleo estable', v: nucleo, sub: `jugaron los ${nPart} partidos`, color: 'green' },
-        { l: 'Cambios totales', v: cam, sub: `${camProm} por partido`, color: '' },
-        { l: 'Promedio min/jugador', v: minProm + 'm', sub: jugMax ? `Tope: ${jugMax.jugador.split(' ').slice(-1)[0]} (${minMax}m)` : '', color: 'amber' },
+        { k: 'partidos',  l: 'Partidos analizados', v: nPart, color: 'red' },
+        { k: 'minutos',   l: 'Minutos jugados (div.)', v: minTot, sub: `${jugUsados} jug. en cancha`, color: '' },
+        { k: 'jugadores', l: 'Jugadores utilizados', v: jugUsados, sub: `${tit} tit · ${sup} sup`, color: 'red' },
+        { k: 'nucleo',    l: 'Núcleo estable', v: nucleo, sub: `jugaron los ${nPart} partidos`, color: 'green' },
+        { k: 'cambios',   l: 'Cambios totales', v: cam, sub: `${camProm} por partido`, color: '' },
+        { k: 'promedio',  l: 'Promedio min/jugador', v: minProm + 'm', sub: jugMax ? `Tope: ${jugMax.jugador.split(' ').slice(-1)[0]} (${minMax}m)` : '', color: 'amber' },
       ];
-      return `<div class="kpi-row" style="grid-template-columns:repeat(6,1fr);margin-bottom:1.4rem">
-        ${cards.map(c => `<div class="kpi-card">
+      return `<div class="kpi-row" style="grid-template-columns:repeat(6,1fr);margin-bottom:1rem">
+        ${cards.map(c => `<div class="kpi-card clickable ${plantelDetalleAbierto===c.k?'active':''}" data-key="${c.k}" onclick="togglePlantelDetalle('${c.k}')">
           <div class="kpi-card-label">${c.l}</div>
           <div class="kpi-card-val ${c.color}">${c.v}</div>
           ${c.sub ? `<div class="kpi-card-sub">${c.sub}</div>` : ''}
         </div>`).join('')}
-      </div>`;
+      </div>
+      <div id="plantel-detalle" class="plantel-detalle">${renderPlantelDetalle(plantelDetalleAbierto)}</div>`;
     })()}
     <div class="two-col" style="grid-template-columns: 1.4fr 1fr">
       <div class="panel-card">
@@ -2375,6 +2415,7 @@ function renderMatriz(titulo, mat, ordenFilas, ordenCols) {
 let pitchModo = 'calor'; // 'calor' | 'puntos' | 'flechas'
 let coordsActuales = [];
 let mostrarCG = true;    // overlay de centro de gravedad + dispersión
+let plantelDetalleAbierto = null;
 // Filtro de tipo de acción en la cancha (default: todos activos)
 const CATS_ACCION = [
   ['pases',   'Pases',           ['PCompletos','PIncompletos','PASES']],
@@ -2503,6 +2544,108 @@ function _outcomeAccion(tagsStr) {
   if (neg.some(n => t.includes(n))) return 'neg';
   if (t.some(x => x.startsWith('PERDIDAS'))) return 'neg';
   return 'pos';
+}
+
+function renderPlantelDetalle(key) {
+  if (!key) return '';
+  const nPart = archivosActuales.length || 1;
+  const partidoNombres = (datosActuales?.partidos && datosActuales.partidos.length) ? datosActuales.partidos : nombresPartidos;
+  const minutos = datosActuales?.minutos || [];
+  const cambios = datosActuales?.cambios || [];
+
+  let titulo = '', explicacion = '', contenido = '';
+
+  if (key === 'partidos') {
+    titulo = '📋 Partidos analizados';
+    explicacion = `Listado de los ${nPart} partido(s) cargado(s) actualmente. Los rivales se infieren del nombre del Timeline en cada CSV ("River vs X" → "X").`;
+    contenido = partidoNombres.map((p, i) => {
+      const rival = _rivalDePartido(p);
+      return `<div class="det-item"><span class="det-num">${i+1}.</span><span>${p}</span><span class="det-tag">vs ${rival}</span></div>`;
+    }).join('');
+  }
+  else if (key === 'minutos') {
+    titulo = '⏱ Minutos jugados de la división';
+    explicacion = `Suma de los minutos en cancha de todos los jugadores que entraron al menos una vez. Cada minuto cuenta una vez por jugador en campo (un partido completo con 11 jugadores = 990 min de plantel).`;
+    const minTot = Math.round(minutos.reduce((s,p) => s + (p.minutos||0), 0));
+    const teorico = 11 * 90 * nPart;
+    const utilizacion = teorico ? Math.round(minTot / teorico * 100) : 0;
+    contenido =
+      `<div class="det-item"><span>Total acumulado</span><span class="det-tag">${minTot} min</span></div>` +
+      `<div class="det-item"><span>Teórico (11 × 90 × ${nPart})</span><span class="det-tag">${teorico} min</span></div>` +
+      `<div class="det-item"><span>Promedio por partido</span><span class="det-tag">${Math.round(minTot/nPart)} min</span></div>` +
+      `<div class="det-item"><span>Utilización del campo</span><span class="det-tag">${utilizacion}%</span></div>`;
+  }
+  else if (key === 'jugadores') {
+    titulo = '👥 Jugadores utilizados';
+    explicacion = `Jugadores que tuvieron al menos 1 minuto en alguno de los ${nPart} partido(s). "Titular" = arrancó al menos un partido; "Suplente" = sólo entró desde el banco. Cuenta partidos jugados (p).`;
+    const titulares = minutos.filter(p => p.condicion === 'Titular').sort((a,b) => (b.minutos||0)-(a.minutos||0));
+    const suplentes = minutos.filter(p => p.condicion === 'Suplente').sort((a,b) => (b.minutos||0)-(a.minutos||0));
+    contenido = `<div class="det-sub">Titulares · ${titulares.length}</div>` +
+      titulares.map(p => `<div class="det-item"><span>${p.jugador}</span><span class="det-tag">${p.minutos}m · ${p.partidos||1}p</span></div>`).join('') +
+      `<div class="det-sub">Suplentes · ${suplentes.length}</div>` +
+      (suplentes.length ? suplentes.map(p => `<div class="det-item"><span>${p.jugador}</span><span class="det-tag">${p.minutos}m · ${p.partidos||1}p</span></div>`).join('')
+                        : '<div class="det-item" style="color:var(--gris5)"><em>Sin suplentes detectados.</em></div>');
+  }
+  else if (key === 'nucleo') {
+    titulo = '🎯 Núcleo estable del plantel';
+    explicacion = `Jugadores que aparecieron al menos 1 minuto en TODOS los ${nPart} partido(s) cargado(s). Indica el grupo más constante (típicamente el "11 fijo" del equipo).`;
+    const nuc = minutos.filter(p => (p.partidos || 0) === nPart).sort((a,b) => (b.minutos||0)-(a.minutos||0));
+    if (!nuc.length) {
+      contenido = `<div class="det-item" style="color:var(--gris5)"><em>Ningún jugador jugó los ${nPart} partidos.</em></div>`;
+    } else {
+      contenido = nuc.map(p => `<div class="det-item">
+        <span><b>${p.jugador}</b></span>
+        <span class="det-tag">${p.condicion} · ${p.minutos}m · ${(p.minutos/(p.partidos||1)).toFixed(1)} /p</span>
+      </div>`).join('');
+    }
+  }
+  else if (key === 'cambios') {
+    titulo = '🔄 Cambios totales';
+    explicacion = `Cambios inferidos por el parser. Un cambio se detecta cuando un jugador entra al menos 5 min después del inicio del partido y se matchea con otro que salió antes del final. Los nombres marcados "—" son cambios donde no se pudo identificar al saliente.`;
+    const camProm = nPart ? (cambios.length / nPart).toFixed(1) : '0';
+    const lista = cambios.slice(0, 16).map(c => {
+      const m = (c.minuto || '').replace(/^\[[^\]]+\]\s*/, '');
+      return `<div class="det-item">
+        <span style="color:var(--rojo);min-width:50px">${m}</span>
+        <span style="color:#ff6666">↓ ${(c.sale||'—').slice(0,18)}</span>
+        <span style="color:#66ff99">↑ ${(c.entra||'—').slice(0,18)}</span>
+      </div>`;
+    }).join('');
+    contenido =
+      `<div class="det-item"><span>Total de cambios</span><span class="det-tag">${cambios.length}</span></div>` +
+      `<div class="det-item"><span>Promedio por partido</span><span class="det-tag">${camProm}</span></div>` +
+      `<div class="det-sub">Lista (primeros ${Math.min(16, cambios.length)})</div>` +
+      (lista || '<div class="det-item" style="color:var(--gris5)"><em>Sin cambios.</em></div>');
+  }
+  else if (key === 'promedio') {
+    titulo = '📊 Distribución de minutos por jugador';
+    explicacion = `Promedio total = minutos acumulados ÷ jugadores utilizados. El "tope" del card es el jugador con más minutos en el acumulado.`;
+    const sorted = [...minutos].sort((a,b) => (b.minutos||0)-(a.minutos||0));
+    const top = sorted.slice(0, 5);
+    const bottom = [...sorted].reverse().slice(0, 5);
+    contenido = `<div class="det-sub">Más utilizados</div>` +
+      top.map((p, i) => `<div class="det-item"><span class="det-num">${i+1}.</span><span>${p.jugador}</span><span class="det-tag">${p.minutos}m</span></div>`).join('') +
+      `<div class="det-sub">Menos utilizados (de los que jugaron)</div>` +
+      bottom.map((p, i) => `<div class="det-item"><span class="det-num">${i+1}.</span><span>${p.jugador}</span><span class="det-tag">${p.minutos}m</span></div>`).join('');
+  }
+
+  return `<div class="plantel-detalle-card">
+    <div class="plantel-detalle-head">
+      <div class="plantel-detalle-titulo">${titulo}</div>
+      <button class="plantel-detalle-x" onclick="togglePlantelDetalle('${key}')" title="Cerrar">×</button>
+    </div>
+    <div class="plantel-detalle-expl">${explicacion}</div>
+    <div class="plantel-detalle-body">${contenido}</div>
+  </div>`;
+}
+
+function togglePlantelDetalle(k) {
+  plantelDetalleAbierto = plantelDetalleAbierto === k ? null : k;
+  const cont = document.getElementById('plantel-detalle');
+  if (cont) cont.innerHTML = renderPlantelDetalle(plantelDetalleAbierto);
+  document.querySelectorAll('#panel-plantel .kpi-card.clickable').forEach(c => {
+    c.classList.toggle('active', c.dataset.key === plantelDetalleAbierto);
+  });
 }
 
 function _rivalDePartido(timeline) {
