@@ -1589,6 +1589,17 @@ function renderResultados(d) {
 
   <!-- COLECTIVO (suma de jugadores) -->
   <div class="tab-panel" id="panel-colectivo">
+    <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:.8rem">
+      <span style="font-size:10px;color:var(--gris5);text-transform:uppercase;letter-spacing:.6px;margin-right:6px;font-weight:700">Presets:</span>
+      <button class="chip-toggle" onclick="presetJugadoresCol('todos')">👥 Todos</button>
+      <button class="chip-toggle" onclick="presetJugadoresCol('titulares11')">⭐ 11 titulares</button>
+      <button class="chip-toggle" onclick="presetJugadoresCol('top5')">🏆 Top 5</button>
+      <button class="chip-toggle" onclick="presetJugadoresCol('suplentes')">🪑 Suplentes</button>
+      <button class="chip-toggle" onclick="presetJugadoresCol('defensores')">🛡 Defensores</button>
+      <button class="chip-toggle" onclick="presetJugadoresCol('mediocampistas')">⚙ Mediocampistas</button>
+      <button class="chip-toggle" onclick="presetJugadoresCol('delanteros')">⚽ Delanteros</button>
+      <button class="chip-toggle" onclick="presetJugadoresCol('ninguno')">✕ Limpiar</button>
+    </div>
     <div id="jug-filter" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:1rem;align-items:center">
       <span style="font-size:10px;color:var(--gris5);text-transform:uppercase;letter-spacing:.5px;margin-right:4px">Jugadores:</span>
       ${jugadores.map(j => `
@@ -1824,6 +1835,49 @@ function onJugadorToggleCreador() {
 
 function toggleJugadores(on) {
   jugadoresSel = on && datosJugadores ? new Set(Object.keys(datosJugadores)) : new Set();
+  _sincronizarChipsJugadores();
+  _refrescarColYCreador();
+}
+
+function presetJugadoresCol(preset) {
+  if (!datosJugadores) return;
+  const todos = Object.keys(datosJugadores);
+  // Para clasificación por línea sólo considerar jugadores con volumen
+  const conVolumen = todos.filter(j =>
+    (datosJugadores[j].minutos || 0) >= 15 &&
+    (datosJugadores[j].acciones_xy || 0) >= 10
+  );
+
+  if (preset === 'todos') {
+    jugadoresSel = new Set(todos);
+  } else if (preset === 'ninguno') {
+    jugadoresSel = new Set();
+  } else if (preset === 'top5') {
+    const ord = todos.slice().sort((a,b) =>
+      (datosJugadores[b].minutos||0) - (datosJugadores[a].minutos||0)).slice(0, 5);
+    jugadoresSel = new Set(ord);
+  } else if (preset === 'titulares11') {
+    // Titulares ordenados por minutos, top 11
+    const tit = todos.filter(j => datosJugadores[j].condicion === 'Titular');
+    const ord = tit.sort((a,b) =>
+      (datosJugadores[b].minutos||0) - (datosJugadores[a].minutos||0)).slice(0, 11);
+    jugadoresSel = new Set(ord);
+  } else if (preset === 'suplentes') {
+    jugadoresSel = new Set(todos.filter(j => datosJugadores[j].condicion === 'Suplente'));
+  } else if (preset === 'delanteros' || preset === 'mediocampistas' || preset === 'defensores') {
+    // Categorización por altura (centro_grav_x). 0-120 → 3 tercios
+    // Más adelantado (x mayor) = delantero
+    const ord = [...conVolumen].sort((a,b) =>
+      (datosJugadores[a].centro_grav_x||0) - (datosJugadores[b].centro_grav_x||0));
+    const n = ord.length;
+    if (n < 3) { jugadoresSel = new Set(ord); }
+    else {
+      const tercio = Math.max(2, Math.round(n / 3));
+      if (preset === 'defensores')          jugadoresSel = new Set(ord.slice(0, tercio));
+      else if (preset === 'mediocampistas') jugadoresSel = new Set(ord.slice(tercio, n - tercio));
+      else /* delanteros */                 jugadoresSel = new Set(ord.slice(n - tercio));
+    }
+  }
   _sincronizarChipsJugadores();
   _refrescarColYCreador();
 }
