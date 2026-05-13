@@ -1732,11 +1732,32 @@ function promediarJugadores(lista) {
 }
 
 function dibujarScatter(jugadores) {
-  const W = 700, H = 460, padL = 60, padR = 30, padT = 20, padB = 50;
+  const W = 760, H = 460, padL = 56, padR = 70, padT = 18, padB = 50;
   const xLab = METRICAS.find(m=>m[0]===xMetric)?.[1] || xMetric;
   const yLab = METRICAS.find(m=>m[0]===yMetric)?.[1] || yMetric;
+  const etiquetas = datosJugadores ? (function() {
+    // Reusa la misma lógica que el PDF: apellidos repetidos → "Apellido X."
+    const partes = {};
+    jugadores.forEach(n => {
+      const p = n.trim().split(/\s+/);
+      const ap = (p[p.length - 1] || n).toLowerCase();
+      partes[ap] = (partes[ap] || 0) + 1;
+    });
+    const out = {};
+    jugadores.forEach(n => {
+      const p = n.trim().split(/\s+/);
+      const ap = p[p.length - 1] || n;
+      if (partes[ap.toLowerCase()] > 1 && p.length > 1) {
+        out[n] = `${ap.slice(0,8)} ${p[0][0].toUpperCase()}.`;
+      } else {
+        out[n] = ap.slice(0, 9);
+      }
+    });
+    return out;
+  })() : {};
   const pts = jugadores.map(j => ({
     nombre: j,
+    label: etiquetas[j] || j.split(' ').slice(-1)[0].slice(0, 9),
     x: Number(datosJugadores[j]?.[xMetric] || 0),
     y: Number(datosJugadores[j]?.[yMetric] || 0),
   }));
@@ -1776,34 +1797,59 @@ function dibujarScatter(jugadores) {
   // Labels
   svg += `<text x="${(W+padL-padR)/2}" y="${H-10}" fill="#ccc" font-size="12" text-anchor="middle">${xLab}</text>`;
   svg += `<text x="${padL-45}" y="${(H+padT-padB)/2}" fill="#ccc" font-size="12" text-anchor="middle" transform="rotate(-90 ${padL-45} ${(H+padT-padB)/2})">${yLab}</text>`;
-  // Puntos + etiquetas con anti-overflow y anti-colisión simple
+  // Renderizado: dots primero (siempre), labels con anti-colisión multi-posición
   const minX = padL + 2, maxX = W - padR - 2;
-  const minY = padT + 8, maxY = H - padB - 4;
-  const labelInfo = pts.map(p => {
-    const cx = sx(p.x), cy = sy(p.y);
-    const apellido = (p.nombre.split(' ').slice(-1)[0] || p.nombre).slice(0, 12);
-    // Lado del label según el espacio disponible
-    const espacioDer = maxX - cx, espacioIzq = cx - minX;
-    const ladoIzq = espacioDer < 80 && espacioIzq > espacioDer;
-    let lx = ladoIzq ? cx - 8 : cx + 8;
-    let ly = cy + 3;
-    if (cy < minY + 14) ly = cy + 14;
-    if (cy > maxY - 4)  ly = cy - 8;
-    return { cx, cy, lx, ly, anchor: ladoIzq ? 'end' : 'start', nombre: apellido, original: p.nombre, vx: p.x, vy: p.y };
+  const minY = padT + 6, maxY = H - padB - 4;
+  const FONT = 8.5, CHAR_W = 4.4, ROW_H = 9;
+  const dotR = pts.length > 18 ? 3.2 : 4;
+  // 1) Jitter para dots con coords idénticas (varios jugadores con mismo valor)
+  const buckets = {};
+  pts.forEach(p => {
+    const key = `${Math.round(p.x*10)},${Math.round(p.y*10)}`;
+    if (!buckets[key]) buckets[key] = [];
+    buckets[key].push(p);
   });
-
-  // Anti-colisión simple: si dos labels están a < 12px en Y, desplazo el segundo
-  labelInfo.sort((a,b) => a.cy - b.cy);
-  for (let i = 1; i < labelInfo.length; i++) {
-    const cur = labelInfo[i], prev = labelInfo[i-1];
-    if (Math.abs(cur.lx - prev.lx) < 60 && Math.abs(cur.ly - prev.ly) < 11) {
-      cur.ly = Math.min(maxY, prev.ly + 11);
+  Object.values(buckets).forEach(group => {
+    if (group.length < 2) { group[0]._jx = 0; group[0]._jy = 0; return; }
+    const r = dotR + 1.5;
+    group.forEach((p, i) => {
+      const a = (i / group.length) * 2 * Math.PI;
+      p._jx = Math.cos(a) * r;
+      p._jy = Math.sin(a) * r;
+    });
+  });
+  // 2) Dibujar todos los dots (con jitter aplicado)
+  pts.forEach(p => {
+    const cx = sx(p.x) + (p._jx || 0);
+    const cy = sy(p.y) + (p._jy || 0);
+    p.cx = cx; p.cy = cy;
+    svg += `<circle class="scatter-dot" cx="${cx}" cy="${cy}" r="${dotR}" fill="#CC0000" opacity="0.85"><title>${p.nombre}\n${xLab}: ${p.x}\n${yLab}: ${p.y}</title></circle>`;
+  });
+  // 2) Posicionar labels: 4 posiciones candidatas, eliminar si no entra ni evita colisión
+  const placed = []; // bounding boxes de labels ya puestos {x1,y1,x2,y2}
+  const overlaps = (b) => placed.some(q => !(b.x2 < q.x1 || b.x1 > q.x2 || b.y2 < q.y1 || b.y1 > q.y2));
+  // Orden: priorizo los puntos más extremos (mayor producto x*y) — los outliers se etiquetan primero
+  const ordenado = [...pts].sort((a,b) => (b.x + b.y) - (a.x + a.y));
+  ordenado.forEach(p => {
+    const w = p.label.length * CHAR_W + 2;
+    const candidatas = [
+      { x: p.cx + dotR + 3,         y: p.cy + 3,            anchor: 'start'  },  // derecha
+      { x: p.cx - dotR - 3,         y: p.cy + 3,            anchor: 'end'    },  // izquierda
+      { x: p.cx,                    y: p.cy - dotR - 3,     anchor: 'middle' },  // arriba
+      { x: p.cx,                    y: p.cy + dotR + 9,     anchor: 'middle' },  // abajo
+    ];
+    for (const pos of candidatas) {
+      const w2 = w / 2;
+      const x1 = pos.anchor === 'end' ? pos.x - w : pos.anchor === 'middle' ? pos.x - w2 : pos.x;
+      const x2 = x1 + w;
+      const y1 = pos.y - ROW_H + 1, y2 = pos.y + 2;
+      if (x1 < minX || x2 > maxX || y1 < minY || y2 > maxY) continue;
+      if (overlaps({ x1, y1, x2, y2 })) continue;
+      placed.push({ x1, y1, x2, y2 });
+      svg += `<text x="${pos.x}" y="${pos.y}" fill="#f5f5f5" font-size="${FONT}" text-anchor="${pos.anchor}" style="paint-order:stroke;stroke:#0a0a0a;stroke-width:2.4;stroke-linejoin:round">${p.label}</text>`;
+      return;
     }
-  }
-
-  labelInfo.forEach(p => {
-    svg += `<circle class="scatter-dot" cx="${p.cx}" cy="${p.cy}" r="5" fill="#CC0000" opacity="0.85"><title>${p.original}\n${xLab}: ${p.vx}\n${yLab}: ${p.vy}</title></circle>`;
-    svg += `<text x="${p.lx}" y="${p.ly}" fill="#f5f5f5" font-size="10" text-anchor="${p.anchor}" style="paint-order:stroke;stroke:#0a0a0a;stroke-width:2.5;stroke-linejoin:round">${p.nombre}</text>`;
+    // No entra ningún label sin colisionar — se omite (queda accesible vía hover)
   });
   svg += '</svg>';
   return svg;
