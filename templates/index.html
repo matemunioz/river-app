@@ -2148,8 +2148,8 @@ function _tokensHtml(html) {
 }
 
 function escribirMaquina(el, html, opts = {}) {
-  const charsPerStep = opts.chars || 2;
-  const delay = opts.delay || 9;
+  const charsPerStep = opts.chars || 1;
+  const delay = opts.delay || 32;
   if (!el || el.dataset.tipeado === '1') return;
   el.dataset.tipeado = '1';
   const tokens = _tokensHtml(html);
