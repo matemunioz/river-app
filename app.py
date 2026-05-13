@@ -62,7 +62,10 @@ def analizar():
         return jsonify({"error": str(e)}), 400
 
     resultados = [sc.analizar_partido(df) for df in dfs]
-    return jsonify(sc.combinar_partidos(resultados))
+    out = sc.combinar_partidos(resultados)
+    # Adjunto las colectivas por partido para drill-down en el hero
+    out["partidos_data"] = [r["colectivas"] for r in resultados]
+    return jsonify(out)
 
 
 @app.route("/api/pdf/colectivo", methods=["POST"])

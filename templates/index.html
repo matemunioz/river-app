@@ -1280,12 +1280,13 @@ function renderResultados(d) {
 
   <div class="kpi-row">
     ${[
-      ['Llegadas', lp.total, 'red', `${lr.total} del rival`],
-      ['Sit. de Gol', col.sit_gol_prop, 'amber', `${col.sit_gol_riv} del rival`],
-      ['Remates al arco', lp.tiros_arco, 'red', `${lr.tiros_arco} del rival`],
-      ['Recuperadas', col.recuperadas, 'green', `${col.perdidas} pérdidas`],
-    ].map(([l,v,c,sub]) => `<div class="kpi-card"><div class="kpi-card-label">${l}</div><div class="kpi-card-val ${c}">${v}</div><div class="kpi-card-sub">${sub}</div></div>`).join('')}
+      ['llegadas',    'Llegadas',        lp.total,            'red',   `${lr.total} del rival`],
+      ['sit_gol',     'Sit. de Gol',     col.sit_gol_prop,    'amber', `${col.sit_gol_riv} del rival`],
+      ['remates',     'Remates al arco', lp.tiros_arco,       'red',   `${lr.tiros_arco} del rival`],
+      ['recuperadas', 'Recuperadas',     col.recuperadas,     'green', `${col.perdidas} pérdidas`],
+    ].map(([k,l,v,c,sub]) => `<div class="kpi-card clickable ${resumenDetalleAbierto===k?'active':''}" data-key="${k}" onclick="toggleResumenDetalle('${k}')"><div class="kpi-card-label">${l}</div><div class="kpi-card-val ${c}">${v}</div><div class="kpi-card-sub">${sub}</div></div>`).join('')}
   </div>
+  <div id="resumen-detalle" class="plantel-detalle">${renderResumenDetalle(resumenDetalleAbierto)}</div>
 
   <div class="section">
     <div class="tabs">
@@ -2497,6 +2498,8 @@ let pitchModo = 'calor'; // 'calor' | 'puntos' | 'flechas'
 let coordsActuales = [];
 let mostrarCG = true;    // overlay de centro de gravedad + dispersión
 let plantelDetalleAbierto = null;
+let resumenDetalleAbierto = null;  // 'llegadas' | 'sit_gol' | 'remates' | 'recuperadas'
+let resumenFiltro = 'total';        // filtro dentro del detalle
 // Filtro de tipo de acción en la cancha (default: todos activos)
 const CATS_ACCION = [
   ['pases',   'Pases',           ['PCompletos','PIncompletos','PASES']],
@@ -2625,6 +2628,126 @@ function _outcomeAccion(tagsStr) {
   if (neg.some(n => t.includes(n))) return 'neg';
   if (t.some(x => x.startsWith('PERDIDAS'))) return 'neg';
   return 'pos';
+}
+
+function renderResumenDetalle(key) {
+  if (!key || !datosActuales) return '';
+  const partidosData = datosActuales.partidos_data || [];
+  const partidoNombres = (datosActuales.partidos && datosActuales.partidos.length) ? datosActuales.partidos : nombresPartidos;
+
+  // Config por métrica: lista de filtros + cómo extrae el valor de cada partido
+  const cfg = {
+    llegadas: {
+      titulo: '🏹 Llegadas Propias',
+      explicacion: 'Total de llegadas al área rival registradas en cada partido. Los filtros desglosan por carril de finalización, tipo de jugada o cantidad de carriles utilizados.',
+      filtros: [
+        ['total',     'Total',     p => p.llegadas_prop?.total      || 0],
+        ['izq',       'Izquierda', p => p.llegadas_prop?.izq        || 0],
+        ['eje',       'Eje',       p => p.llegadas_prop?.eje        || 0],
+        ['der',       'Derecha',   p => p.llegadas_prop?.der        || 0],
+        ['asoc',      'Asociado',  p => p.llegadas_prop?.asociado   || 0],
+        ['directo',   'Directo',   p => p.llegadas_prop?.directo    || 0],
+        ['detenidas', 'Detenidas', p => p.llegadas_prop?.detenidas  || 0],
+        ['1c',        '1 Carril',  p => p.llegadas_prop?.['1carril']   || 0],
+        ['2c',        '2 Carriles',p => p.llegadas_prop?.['2carriles'] || 0],
+        ['3c',        '3 Carriles',p => p.llegadas_prop?.['3carriles'] || 0],
+      ],
+    },
+    sit_gol: {
+      titulo: '🎯 Situaciones de Gol Propias',
+      explicacion: 'Cantidad de situaciones de gol generadas en cada partido. Una situación de gol es una llegada con peligro real (no toda llegada lo es).',
+      filtros: [
+        ['total',     'Total',     p => p.sit_gol_prop || 0],
+      ],
+      extra: (p) => p.goles_propios?.total > 0 ? ` · ⚽ ${p.goles_propios.total} gol${p.goles_propios.total>1?'es':''}` : '',
+    },
+    remates: {
+      titulo: '🥅 Remates al arco',
+      explicacion: 'Remates que terminaron en el arco rival (incluye los que fueron gol y los atajados). Los filtros desglosan el tipo de remate generado.',
+      filtros: [
+        ['total',     'Al arco',   p => p.llegadas_prop?.tiros_arco || 0],
+        ['gol',       'Goles',     p => p.goles_propios?.total      || 0],
+        ['afuera',    'Afuera',    p => p.llegadas_prop?.afuera     || 0],
+        ['bloqueado', 'Bloqueado', p => p.llegadas_prop?.bloqueado  || 0],
+      ],
+    },
+    recuperadas: {
+      titulo: '🛡 Recuperadas',
+      explicacion: 'Cantidad de balones recuperados por el equipo en cada partido (filas Row="Recuperadas" del CSV).',
+      filtros: [
+        ['total',     'Recuperadas', p => p.recuperadas || 0],
+        ['perd',      'Pérdidas',    p => p.perdidas    || 0],
+        ['balance',   'Balance',     p => (p.recuperadas||0) - (p.perdidas||0)],
+      ],
+    },
+  };
+  const conf = cfg[key];
+  if (!conf) return '';
+
+  // Filtro válido para esta métrica (reseteamos si cambió de card)
+  if (!conf.filtros.find(f => f[0] === resumenFiltro)) resumenFiltro = conf.filtros[0][0];
+  const selFiltro = conf.filtros.find(f => f[0] === resumenFiltro);
+
+  // Valores por partido con el filtro aplicado
+  const filas = partidosData.map((p, i) => {
+    const nom = partidoNombres[i] || p.partido || `Partido ${i+1}`;
+    const rival = _rivalDePartido(nom) || nom;
+    return { rival, nom, valor: selFiltro[2](p), extra: conf.extra ? conf.extra(p) : '' };
+  });
+  const maxV = Math.max(1, ...filas.map(f => Math.abs(f.valor)));
+  const total = filas.reduce((s,f) => s + (f.valor||0), 0);
+  const prom = filas.length ? (total / filas.length).toFixed(1) : '0';
+
+  const chips = conf.filtros.map(f => `
+    <button class="chip-toggle ${resumenFiltro===f[0]?'active':''}" onclick="setResumenFiltro('${f[0]}')">${f[1]}</button>
+  `).join('');
+
+  const filasHtml = filas.map(f => {
+    const pct = (Math.abs(f.valor) / maxV) * 100;
+    const color = f.valor < 0 ? '#ff6666' : 'var(--rojo)';
+    return `<div class="det-item" style="gap:14px">
+      <span style="min-width:140px"><b>vs ${f.rival}</b><span style="color:var(--gris5);font-weight:400;font-size:10.5px">${f.extra}</span></span>
+      <div style="flex:1;height:8px;background:var(--gris3);border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${pct.toFixed(1)}%;background:${color};border-radius:4px"></div>
+      </div>
+      <span class="det-tag" style="min-width:42px;text-align:right">${f.valor}</span>
+    </div>`;
+  }).join('');
+
+  return `<div class="plantel-detalle-card">
+    <div class="plantel-detalle-head">
+      <div class="plantel-detalle-titulo">${conf.titulo}</div>
+      <button class="plantel-detalle-x" onclick="toggleResumenDetalle('${key}')" title="Cerrar">×</button>
+    </div>
+    <div class="plantel-detalle-expl">${conf.explicacion}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px">${chips}</div>
+    ${filasHtml}
+    <div style="display:flex;justify-content:space-between;margin-top:14px;padding-top:10px;border-top:1px solid var(--gris3);font-size:11px;color:var(--gris5)">
+      <span>Total: <b style="color:var(--blanco)">${total}</b></span>
+      <span>Promedio por partido: <b style="color:var(--blanco)">${prom}</b></span>
+      <span>Filtro activo: <b style="color:var(--rojo)">${selFiltro[1]}</b></span>
+    </div>
+  </div>`;
+}
+
+function toggleResumenDetalle(k) {
+  if (resumenDetalleAbierto === k) {
+    resumenDetalleAbierto = null;
+  } else {
+    resumenDetalleAbierto = k;
+    resumenFiltro = 'total';
+  }
+  const cont = document.getElementById('resumen-detalle');
+  if (cont) cont.innerHTML = renderResumenDetalle(resumenDetalleAbierto);
+  document.querySelectorAll('.kpi-row .kpi-card.clickable').forEach(c => {
+    c.classList.toggle('active', c.dataset.key === resumenDetalleAbierto);
+  });
+}
+
+function setResumenFiltro(f) {
+  resumenFiltro = f;
+  const cont = document.getElementById('resumen-detalle');
+  if (cont) cont.innerHTML = renderResumenDetalle(resumenDetalleAbierto);
 }
 
 function renderPlantelDetalle(key) {
