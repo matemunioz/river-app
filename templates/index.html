@@ -1419,6 +1419,34 @@ function renderResultados(d) {
 
   <!-- PLANTEL (minutos + cambios) -->
   <div class="tab-panel" id="panel-plantel">
+    ${(() => {
+      const nPart = archivosActuales.length || 1;
+      const jugUsados = minutos.length;
+      const minTot = Math.round(minutos.reduce((s,p) => s + (p.minutos||0), 0));
+      const tit = minutos.filter(p => p.condicion === 'Titular').length;
+      const sup = jugUsados - tit;
+      const cam = cambios.length;
+      const camProm = nPart ? (cam / nPart).toFixed(1) : '0';
+      const minProm = jugUsados ? Math.round(minTot / jugUsados) : 0;
+      const nucleo = minutos.filter(p => (p.partidos || 0) === nPart).length;
+      const minMax = minutos.length ? Math.max(...minutos.map(p => p.minutos || 0)) : 0;
+      const jugMax = minutos.find(p => p.minutos === minMax);
+      const cards = [
+        { l: 'Partidos analizados', v: nPart, color: 'red' },
+        { l: 'Minutos jugados (div.)', v: minTot, sub: `${jugUsados} jug. en cancha`, color: '' },
+        { l: 'Jugadores utilizados', v: jugUsados, sub: `${tit} tit · ${sup} sup`, color: 'red' },
+        { l: 'Núcleo estable', v: nucleo, sub: `jugaron los ${nPart} partidos`, color: 'green' },
+        { l: 'Cambios totales', v: cam, sub: `${camProm} por partido`, color: '' },
+        { l: 'Promedio min/jugador', v: minProm + 'm', sub: jugMax ? `Tope: ${jugMax.jugador.split(' ').slice(-1)[0]} (${minMax}m)` : '', color: 'amber' },
+      ];
+      return `<div class="kpi-row" style="grid-template-columns:repeat(6,1fr);margin-bottom:1.4rem">
+        ${cards.map(c => `<div class="kpi-card">
+          <div class="kpi-card-label">${c.l}</div>
+          <div class="kpi-card-val ${c.color}">${c.v}</div>
+          ${c.sub ? `<div class="kpi-card-sub">${c.sub}</div>` : ''}
+        </div>`).join('')}
+      </div>`;
+    })()}
     <div class="two-col" style="grid-template-columns: 1.4fr 1fr">
       <div class="panel-card">
         <div class="sec-title red">Minutos jugados</div>
