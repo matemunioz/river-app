@@ -712,23 +712,24 @@ def estadisticas_individuales(df: pd.DataFrame, jugador: str) -> dict:
         return round((rem_sup[s]["arco"] + rem_sup[s]["gol"]) / tot * 100) if tot else 0
     rem_efect = {s: _ef(s) for s in rem_sup}
 
-    # Goles y asistencias cruzando con goles propios
-    goles_jug = tiro_gol  # ya contados arriba desde los tags del jugador
+    # Goles y asistencias cruzando con goles propios.
+    # Asistencia = última acción del jugador (en los 45s previos al gol) etiquetada como
+    # "CAsistencia" (centro asistencia) o "Clave" (pase clave). Matching insensible a
+    # mayúsculas/tildes/espacios para cubrir variaciones de tagging.
+    goles_jug = tiro_gol
     asistencias = 0
-    # La asistencia la buscamos en los goles propios.
-    # Cuenta tanto pase clave (PCompletos+Clave) como centro asistencia (CAsistencia, con o sin CCompletos)
+    asist_centros = 0
+    asist_pases  = 0
     goles_prop_df = df[df["Row"] == "Goles Propios"]
     for _, grow in goles_prop_df.iterrows():
         t_gol = grow["Start time"]
-        previas = sub[(sub["Start time"] <= t_gol + 2) & (sub["Start time"] >= t_gol - 30)]
+        previas = sub[(sub["Start time"] <= t_gol + 2) & (sub["Start time"] >= t_gol - 45)]
         for _, prev_row in previas.iterrows():
-            prev_tags = get_tags(prev_row)
-            if "CAsistencia" in prev_tags:
-                asistencias += 1
-                break
-            if "Clave" in prev_tags and ("PCompletos" in prev_tags or "CCompletos" in prev_tags):
-                asistencias += 1
-                break
+            prev_tags_norm = {_norm_tag(x) for x in get_tags(prev_row)}
+            if "casistencia" in prev_tags_norm:
+                asistencias += 1; asist_centros += 1; break
+            if "clave" in prev_tags_norm and ("pcompletos" in prev_tags_norm or "ccompletos" in prev_tags_norm):
+                asistencias += 1; asist_pases += 1; break
 
     return {
         "jugador":          jugador,
@@ -737,6 +738,8 @@ def estadisticas_individuales(df: pd.DataFrame, jugador: str) -> dict:
         "intervenciones":   intervenciones,
         "goles":            goles_jug,
         "asistencias":      asistencias,
+        "asist_pases":      asist_pases,    # asistencias provenientes de pase clave
+        "asist_centros":    asist_centros,  # asistencias provenientes de centro
         # pases
         "pases_total":      p_total,
         "pases_completos":  p_compl,

@@ -210,10 +210,27 @@ def coords_jugador():
         dfs = leer_todos(request)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+    return jsonify(_coords_de_jugadores(dfs, [jugador]))
+
+
+@app.route("/api/coords-multi", methods=["POST"])
+def coords_multi():
+    jugs_raw = request.form.getlist("jugador")
+    if not jugs_raw:
+        return jsonify({"error": "Falta jugador"}), 400
+    try:
+        dfs = leer_todos(request)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(_coords_de_jugadores(dfs, jugs_raw))
+
+
+def _coords_de_jugadores(dfs, jugadores):
     import pandas as pd
+    jugs_set = set(jugadores)
     acciones = []
     for df in dfs:
-        sub = df[(df["Row"] == jugador) & df["x_start"].notna() & df["y_start"].notna()]
+        sub = df[df["Row"].isin(jugs_set) & df["x_start"].notna() & df["y_start"].notna()]
         for _, r in sub.iterrows():
             acciones.append({
                 "x":  float(r["x_start"]),
@@ -225,8 +242,9 @@ def coords_jugador():
                 "t":  float(r["Start time"]) if pd.notna(r.get("Start time")) else 0,
                 "tags":    str(r.get("Ungrouped") or "") if pd.notna(r.get("Ungrouped")) else "",
                 "partido": str(r.get("Timeline") or "") if pd.notna(r.get("Timeline")) else "",
+                "jugador": str(r["Row"]),
             })
-    return jsonify(acciones)
+    return acciones
 
 
 @app.route("/api/individual", methods=["POST"])

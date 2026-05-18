@@ -1085,7 +1085,6 @@ function fdTiempo(fd) {
 
 async function analizarConFiltro({ mostrarStatus = false } = {}) {
   datosJugadores = null;
-  mapaTerInit = false;  // recalcula default de jugadores visibles al cambiar partidos
   const idxs = Array.from(partidosSel).sort((a,b) => a-b);
   if (mostrarStatus) {
     document.getElementById('status-bar').style.display = 'flex';
@@ -1604,30 +1603,38 @@ function renderResultados(d) {
       <button class="chip-toggle" onclick="presetJugadoresCol('delanteros')">⚽ Delanteros</button>
       <button class="chip-toggle" onclick="presetJugadoresCol('ninguno')">✕ Limpiar</button>
     </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:.6rem">
+      <span style="font-size:10px;color:var(--gris5);text-transform:uppercase;letter-spacing:.5px">Jugadores:</span>
+      <input type="search" placeholder="🔍 Buscar jugador..." oninput="filtrarChipsJug(this.value, 'jug-filter')"
+             style="flex:1;max-width:280px;background:var(--gris2);border:1px solid var(--gris4);color:var(--blanco);padding:5px 10px;border-radius:6px;font-size:12px">
+      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="toggleJugadores(true)">Todos</button>
+      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="toggleJugadores(false)">Ninguno</button>
+    </div>
     <div id="jug-filter" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:1rem;align-items:center">
-      <span style="font-size:10px;color:var(--gris5);text-transform:uppercase;letter-spacing:.5px;margin-right:4px">Jugadores:</span>
       ${jugadores.map(j => `
-        <label class="part-chip">
+        <label class="part-chip" data-nombre="${j.toLowerCase()}">
           <input type="checkbox" data-jug="${j}" ${jugadoresSel.has(j)?'checked':''} onchange="onJugadorToggle()">
           <span>${j}</span>
         </label>`).join('')}
-      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="toggleJugadores(true)">Todos</button>
-      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="toggleJugadores(false)">Ninguno</button>
     </div>
     <div id="col-content"><p style="color:var(--gris5)">Cargando...</p></div>
   </div>
 
   <!-- CREADOR DE GRÁFICOS -->
   <div class="tab-panel" id="panel-creador">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:.6rem">
+      <span style="font-size:10px;color:var(--gris5);text-transform:uppercase;letter-spacing:.5px">Jugadores:</span>
+      <input type="search" placeholder="🔍 Buscar jugador..." oninput="filtrarChipsJug(this.value, 'jug-filter-creador')"
+             style="flex:1;max-width:280px;background:var(--gris2);border:1px solid var(--gris4);color:var(--blanco);padding:5px 10px;border-radius:6px;font-size:12px">
+      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="toggleJugadores(true)">Todos</button>
+      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="toggleJugadores(false)">Ninguno</button>
+    </div>
     <div id="jug-filter-creador" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:1rem;align-items:center">
-      <span style="font-size:10px;color:var(--gris5);text-transform:uppercase;letter-spacing:.5px;margin-right:4px">Jugadores:</span>
       ${jugadores.map(j => `
-        <label class="part-chip">
+        <label class="part-chip" data-nombre="${j.toLowerCase()}">
           <input type="checkbox" data-jug="${j}" ${jugadoresSel.has(j)?'checked':''} onchange="onJugadorToggleCreador()">
           <span>${j}</span>
         </label>`).join('')}
-      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="toggleJugadores(true)">Todos</button>
-      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="toggleJugadores(false)">Ninguno</button>
     </div>
     <div id="creador-content"><p style="color:var(--gris5)">Cargando...</p></div>
   </div>
@@ -1728,6 +1735,7 @@ document.addEventListener('click', (e) => {
 function renderIndividual(jugador) {
   if (!jugador || !datosActuales) return;
   jugadorActivo = jugador;
+  mapaTerJugsPorZona = null; // el filtro de zona territorial no aplica a la vista individual
 
   const idxs = Array.from(partidosSel).sort((a,b) => a-b);
   if (!idxs.length) {
@@ -1809,6 +1817,20 @@ function _sincronizarChipsJugadores() {
   // Sincroniza los chips de jugador entre los paneles Colectivo y Creador (comparten state)
   document.querySelectorAll('#jug-filter input[type=checkbox], #jug-filter-creador input[type=checkbox]').forEach(b => {
     b.checked = jugadoresSel.has(b.dataset.jug);
+  });
+}
+
+function _normNombre(s) {
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+function filtrarChipsJug(query, contenedorId) {
+  const cont = document.getElementById(contenedorId);
+  if (!cont) return;
+  const q = _normNombre(query.trim());
+  cont.querySelectorAll('.part-chip[data-nombre]').forEach(chip => {
+    const match = !q || _normNombre(chip.dataset.nombre).includes(q);
+    chip.style.display = match ? '' : 'none';
   });
 }
 
@@ -2063,6 +2085,7 @@ function renderColContent() {
   const seleccionados = Array.from(jugadoresSel).filter(j => datosJugadores[j]);
   if (!seleccionados.length) {
     cont.innerHTML = '<p style="color:var(--gris5)">Seleccioná al menos un jugador.</p>';
+    coordsActuales = [];
     return;
   }
   const sum = sumarJugadores(seleccionados);
@@ -2071,9 +2094,12 @@ function renderColContent() {
   sum.__promedio = promediarJugadores(seleccionados);
   sum.__esColectivo = true;
   sum.__seleccionados = seleccionados;
-  cont.innerHTML = buildIndHTML(sum);
-  // El mapa territorial vive dentro del bloque colectivo de buildIndHTML
-  renderMapaTerritorial();
+  // Cargar coords combinadas de TODOS los jugadores seleccionados antes de pintar el HTML
+  fetchCoordsMulti(seleccionados).then(coords => {
+    coordsActuales = coords || [];
+    cont.innerHTML = buildIndHTML(sum);
+    renderMapaTerritorial(); // dentro del HTML del colectivo
+  });
 }
 
 function renderCreadorContent() {
@@ -2648,6 +2674,18 @@ function _filtrarPorCat(acciones) {
   });
 }
 
+function _filtrarPorZonaTerritorial(acciones) {
+  // Aplica el filtro Defensa/Mediocampo/Ataque del Mapa Territorial sobre las acciones del Mapa en cancha.
+  // Solo aplica cuando hay clasificación computada (colectivo) y al menos una zona está desactivada.
+  if (!mapaTerJugsPorZona || mapaTerZonasActivas.size === 3) return acciones;
+  if (!acciones.length || acciones[0].jugador === undefined) return acciones;
+  const ocultos = new Set();
+  ['def','med','atk'].forEach(z => {
+    if (!mapaTerZonasActivas.has(z)) mapaTerJugsPorZona[z].forEach(j => ocultos.add(j));
+  });
+  return acciones.filter(a => !ocultos.has(a.jugador));
+}
+
 function _pitchLines(lc = '#777', lw = 0.22) {
   let s = '';
   s += `<rect x="0" y="0" width="120" height="80" fill="none" stroke="${lc}" stroke-width="${lw}"/>`;
@@ -2988,7 +3026,8 @@ function _tituloAccion(a) {
 
 function dibujarCancha(acciones, modo = 'calor') {
   // 1) Filtrar por categoría de acción (si el usuario destildó alguna)
-  acciones = _filtrarPorCat(acciones);
+  //    y por zona territorial (solo aplica en colectivo)
+  acciones = _filtrarPorZonaTerritorial(_filtrarPorCat(acciones));
   // 2) Flip de y para mostrar laterales en su lado correcto
   acciones = acciones.map(a => ({
     ...a,
@@ -3027,7 +3066,7 @@ function dibujarCancha(acciones, modo = 'calor') {
       const out = _outcomeAccion(a.tags);
       const esGol = /(^|,)\s*Gol\s*(,|$)/.test(a.tags || '');
       if (esGol) {
-        const r = 2.8;
+        const r = 1.7;
         svg += `<g data-pitch-tip="${escAttr(_tituloAccion(a))}" style="cursor:default">` +
                `<image href="/static/pelota.png" x="${a.x - r}" y="${a.y - r}" width="${r*2}" height="${r*2}" preserveAspectRatio="xMidYMid meet"/>` +
                `</g>`;
@@ -3098,7 +3137,7 @@ function setPitchModo(m) {
 }
 
 function _redibujarCancha() {
-  const visibles = _filtrarPorCat(coordsActuales).length;
+  const visibles = _filtrarPorZonaTerritorial(_filtrarPorCat(coordsActuales)).length;
   _pitchScopes().forEach(sec => {
     const cont = sec.querySelector('[id="pitch-container"]');
     if (cont) cont.innerHTML = dibujarCancha(coordsActuales, pitchModo);
@@ -3112,10 +3151,9 @@ function _redibujarCancha() {
 }
 
 // ─── Mapa territorial (posiciones medias del equipo, interactivo) ──────────
-let mapaTerJugSel = new Set();
-let mapaTerInit = false;       // primera vez auto-selecciona titulares
 let mapaTerMinMinutos = 20;    // descarta jugadores con < N min para que no ensucie
 let mapaTerZonasActivas = new Set(['def','med','atk']); // filtro por zona; vacío = oculta todo, completo = no filtra
+let mapaTerJugsPorZona = null; // { def: Set, med: Set, atk: Set } — se recalcula en renderMapaTerritorial
 
 function _calcularLineasEquipo(jugadores, datos) {
   // Mismo criterio que pdf_gen._calcular_lineas (cuartiles por x)
@@ -3141,9 +3179,9 @@ function _calcularLineasEquipo(jugadores, datos) {
 function _apellidoCorto(nombre) {
   const partes = (nombre||'').split(/\s+/).filter(Boolean);
   if (!partes.length) return '?';
-  // Si el último token parece una inicial ("B.", "M.A."), usar el penúltimo (probable apellido)
+  // Si el último token parece una inicial ("B", "B.", "M.A."), usar el penúltimo (probable apellido)
   const ult = partes[partes.length - 1];
-  if (/^([A-ZÁÉÍÓÚÑ]\.){1,3}$/.test(ult) && partes.length > 1) {
+  if (/^[A-ZÁÉÍÓÚÑ]\.?(?:[A-ZÁÉÍÓÚÑ]\.?){0,2}$/.test(ult) && partes.length > 1) {
     return partes[partes.length - 2].slice(0, 12);
   }
   return ult.slice(0, 12);
@@ -3189,14 +3227,16 @@ function dibujarMapaTerritorial(visibles, datos) {
     });
   });
 
-  // Anti-colisión de etiquetas: para cada label probamos 8 posiciones y elegimos la primera sin solape.
-  const CHARW = 1.45, FH = 3.3, PAD = 0.4;
-  const placed = []; // rects ocupados (incluye los puntos para evitar pisar marcadores)
-  items.forEach(it => { placed.push({ x: it.cx - 2.6, y: it.cy - 2.6, w: 5.2, h: 5.2 }); });
-  function colisiona(r) {
-    return placed.some(p =>
-      !(r.x + r.w + PAD < p.x || p.x + p.w + PAD < r.x ||
-        r.y + r.h + PAD < p.y || p.y + p.h + PAD < r.y));
+  // Anti-colisión de etiquetas: posiciones cardinales con fallbacks verticales. Sin leader lines.
+  // Labels pegadas al círculo; sólo se alejan si chocan con otro círculo o label.
+  const CHARW = 1.45, FH = 3.3, PAD = 0.35;
+  const CIRC_BUFFER = 2.55;  // apenas mayor que el radio del círculo (2.4)
+  const placed = [];
+  items.forEach(it => { placed.push({ x: it.cx - CIRC_BUFFER, y: it.cy - CIRC_BUFFER, w: CIRC_BUFFER*2, h: CIRC_BUFFER*2 }); });
+  function overlapArea(r, p) {
+    const ox = Math.max(0, Math.min(r.x + r.w, p.x + p.w) - Math.max(r.x, p.x));
+    const oy = Math.max(0, Math.min(r.y + r.h, p.y + p.h) - Math.max(r.y, p.y));
+    return ox * oy;
   }
   // Procesar los más conflictivos primero (más vecinos cercanos)
   items.sort((a, b) => {
@@ -3205,27 +3245,34 @@ function dibujarMapaTerritorial(visibles, datos) {
   });
   items.forEach(it => {
     const w = it.label.length * CHARW;
-    // [ox_text, oy_baseline] respecto a (cx, cy) — el texto va con anchor="start"
+    // Cardinales pegadas al círculo, luego variants un toque más lejos si hay colisión
+    // [ox_text, oy_baseline] respecto a (cx, cy) — texto con anchor="start"
     const cands = [
-      [ 3.0,  0.9], [-(w + 3.0),  0.9],                       // der, izq
-      [-w/2, -3.2], [-w/2,  5.4],                             // arriba, abajo
-      [ 3.0, -3.2], [-(w + 3.0), -3.2],                       // der-arr, izq-arr
-      [ 3.0,  5.4], [-(w + 3.0),  5.4],                       // der-aba, izq-aba
-      [ 6.0,  0.9], [-(w + 6.0),  0.9],                       // der lejos, izq lejos
+      [ 2.8,  0.9],            // R
+      [-w/2,  4.4],            // B
+      [-(w + 2.8),  0.9],      // L
+      [-w/2, -2.4],            // T
+      [-w/2,  7.2],            // B+ (sólo si las cardinales colisionan)
+      [-w/2, -5.2],            // T+
     ];
-    let pick = null;
+    const evaluadas = [];
     for (const [ox, oy] of cands) {
       const r = { x: it.cx + ox - PAD, y: it.cy + oy - FH + 0.5, w: w + 2*PAD, h: FH };
       if (r.x < 0.2 || r.x + r.w > 119.8) continue;
       if (r.y < 0.2 || r.y + r.h > 79.8) continue;
-      if (!colisiona(r)) { pick = { ox, oy, r }; break; }
+      const ov = placed.reduce((s, p) => s + overlapArea(r, p), 0);
+      evaluadas.push({ r, ov });
+      if (ov === 0) break; // libre → no seguimos
     }
-    if (!pick) {
-      const r = { x: it.cx + 3.0 - PAD, y: it.cy + 0.9 - FH + 0.5, w: w + 2*PAD, h: FH };
-      pick = { ox: 3.0, oy: 0.9, r };
+    let pick;
+    if (evaluadas.length) {
+      const min = Math.min(...evaluadas.map(e => e.ov));
+      pick = evaluadas.find(e => e.ov === min);
+    } else {
+      pick = { r: { x: it.cx + 2.8 - PAD, y: it.cy + 0.9 - FH + 0.5, w: w + 2*PAD, h: FH } };
     }
-    it.tx = it.cx + pick.ox;
-    it.ty = it.cy + pick.oy;
+    it.tx = pick.r.x + PAD;
+    it.ty = pick.r.y + FH - 0.5;
     it.lw = w;
     placed.push(pick.r);
   });
@@ -3237,34 +3284,14 @@ function dibujarMapaTerritorial(visibles, datos) {
     svg += `<circle cx="${it.cx}" cy="${it.cy}" r="1.9" fill="${it.color}" stroke="#0a0a0a" stroke-width="0.3"/>`;
     svg += `</g>`;
   });
-  // Después leader lines + labels con fondo semitransparente
+  // Labels con fondo semitransparente — sin leader lines (no se "estiran")
   items.forEach(it => {
-    const labCx = it.tx + it.lw / 2;
-    const labCy = it.ty - 1;
-    const dist = Math.hypot(labCx - it.cx, labCy - it.cy);
-    if (dist > 4.5) {
-      const ang = Math.atan2(labCy - it.cy, labCx - it.cx);
-      const x1 = it.cx + Math.cos(ang) * 2.3;
-      const y1 = it.cy + Math.sin(ang) * 2.3;
-      const x2 = labCx - Math.cos(ang) * (it.lw / 2 + 0.2);
-      const y2 = labCy - Math.sin(ang) * (FH / 2 + 0.2);
-      svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${it.color}" stroke-width="0.25" opacity="0.65"/>`;
-    }
-    svg += `<rect x="${it.tx - 0.5}" y="${it.ty - 2.5}" width="${it.lw + 1}" height="3.2" fill="#0a0a0a" fill-opacity="0.6" rx="0.5"/>`;
+    svg += `<rect x="${it.tx - 0.5}" y="${it.ty - 2.5}" width="${it.lw + 1}" height="3.2" fill="#0a0a0a" fill-opacity="0.7" rx="0.5"/>`;
     svg += `<text x="${it.tx}" y="${it.ty}" fill="#fff" font-size="2.4" font-weight="bold">${escAttr(it.label)}</text>`;
   });
 
-  svg += `<text x="118" y="78" fill="#888" font-size="2.4" text-anchor="end">→ ataque</text>`;
   svg += '</svg>';
   return svg;
-}
-
-function _mapaTerInit() {
-  if (mapaTerInit || !datosJugadores) return;
-  // Default: titulares con minutos suficientes
-  const titulares = Object.keys(datosJugadores).filter(j => datosJugadores[j].condicion === 'Titular' && (datosJugadores[j].minutos||0) >= mapaTerMinMinutos);
-  mapaTerJugSel = new Set(titulares.length ? titulares : Object.keys(datosJugadores));
-  mapaTerInit = true;
 }
 
 function renderMapaTerritorial() {
@@ -3272,12 +3299,20 @@ function renderMapaTerritorial() {
   if (!cont) return;
   if (!datosJugadores || !Object.keys(datosJugadores).length) {
     cont.innerHTML = '<p style="color:var(--gris5);padding:1rem">Cargando posiciones…</p>';
+    mapaTerJugsPorZona = null;
     return;
   }
-  _mapaTerInit();
+  // Usa la misma selección de jugadores del filtro de arriba del panel Colectivo
   const todos = Object.keys(datosJugadores).sort();
-  const visibles = todos.filter(j => mapaTerJugSel.has(j));
+  const visibles = todos.filter(j => jugadoresSel.has(j));
   const lineas = _calcularLineasEquipo(visibles, datosJugadores);
+  // Indexar jugadores por zona para que el filtro pueda aplicarse al Mapa en cancha
+  mapaTerJugsPorZona = { def: new Set(), med: new Set(), atk: new Set() };
+  lineas.forEach((zona, jug) => {
+    if (zona === 'def') mapaTerJugsPorZona.def.add(jug);
+    else if (zona === 'atk') mapaTerJugsPorZona.atk.add(jug);
+    else mapaTerJugsPorZona.med.add(jug);
+  });
   const cuenta = { def: 0, med: 0, atk: 0 };
   visibles.forEach(j => { const g = lineas.get(j); if (g) cuenta[g==='def'?'def':g==='atk'?'atk':'med']++; });
   const partidosTxt = (datosActuales?.partidos?.length || 1) + ' partido(s) seleccionados';
@@ -3292,11 +3327,7 @@ function renderMapaTerritorial() {
       </span>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:.6rem">
-      <span style="font-size:10px;color:var(--gris5);text-transform:uppercase;letter-spacing:.6px;margin-right:6px;font-weight:700">Presets:</span>
-      <button class="chip-toggle" onclick="presetMapaTer('todos')">👥 Todos</button>
-      <button class="chip-toggle" onclick="presetMapaTer('titulares')">⭐ Titulares</button>
-      <button class="chip-toggle" onclick="presetMapaTer('ninguno')">✕ Limpiar</button>
-      <span style="font-size:10px;color:var(--gris5);text-transform:uppercase;letter-spacing:.6px;margin-left:14px;margin-right:4px;font-weight:700">Zona:</span>
+      <span style="font-size:10px;color:var(--gris5);text-transform:uppercase;letter-spacing:.6px;margin-right:6px;font-weight:700">Zona:</span>
       ${[['def','🛡 Defensa'],['med','⚙ Mediocampo'],['atk','⚔ Ataque']].map(([k,lbl]) => `
         <label class="part-chip" style="padding:3px 9px">
           <input type="checkbox" ${mapaTerZonasActivas.has(k)?'checked':''} onchange="toggleMapaTerZona('${k}', this.checked)">
@@ -3307,46 +3338,17 @@ function renderMapaTerritorial() {
         <input type="number" min="0" max="200" value="${mapaTerMinMinutos}" style="width:48px;background:var(--gris3);color:var(--blanco);border:1px solid var(--gris4);padding:3px 6px;border-radius:4px;font-size:11px" onchange="mapaTerMinMinutos=parseInt(this.value)||0;renderMapaTerritorial()">
       </label>
     </div>
-    <div id="mapa-ter-jug-filter" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:.8rem">
-      ${todos.map(j => {
-        const ok = mapaTerJugSel.has(j);
-        const min = datosJugadores[j].minutos || 0;
-        const acc = datosJugadores[j].acciones_xy || 0;
-        const sinDatos = acc === 0;
-        return `<label class="part-chip" style="${sinDatos?'opacity:.45':''}" title="${min}m · ${acc} acciones c/coord.">
-          <input type="checkbox" ${ok?'checked':''} ${sinDatos?'disabled':''} onchange="toggleMapaTerJug('${j.replace(/'/g,"\\'")}', this.checked)">
-          <span>${j}</span>
-        </label>`;
-      }).join('')}
-    </div>
     <div style="border:1px solid var(--gris3);border-radius:8px;overflow:hidden">${dibujarMapaTerritorial(visibles, datosJugadores)}</div>
     <div style="font-size:10.5px;color:var(--gris5);margin-top:8px;text-align:center">
-      Posición media calculada sobre todas las acciones con coordenadas del jugador, agregada por los partidos seleccionados arriba. Las líneas verticales marcan el x̄ por línea (defensa / mediocampo / ataque).
+      Posición media calculada sobre las acciones con coordenadas del jugador, agregada por los partidos y jugadores seleccionados arriba. La selección de jugadores se hace con los chips superiores del Colectivo.
     </div>
   `;
-}
-
-function toggleMapaTerJug(j, on) {
-  if (on) mapaTerJugSel.add(j); else mapaTerJugSel.delete(j);
-  renderMapaTerritorial();
 }
 
 function toggleMapaTerZona(z, on) {
   if (on) mapaTerZonasActivas.add(z); else mapaTerZonasActivas.delete(z);
   renderMapaTerritorial();
-}
-
-function presetMapaTer(preset) {
-  if (!datosJugadores) return;
-  const todos = Object.keys(datosJugadores);
-  if (preset === 'todos') {
-    mapaTerJugSel = new Set(todos.filter(j => (datosJugadores[j].acciones_xy||0) > 0));
-  } else if (preset === 'titulares') {
-    mapaTerJugSel = new Set(todos.filter(j => datosJugadores[j].condicion === 'Titular' && (datosJugadores[j].acciones_xy||0) > 0));
-  } else if (preset === 'ninguno') {
-    mapaTerJugSel = new Set();
-  }
-  renderMapaTerritorial();
+  _redibujarCancha(); // el filtro de zona también afecta al Mapa en cancha
 }
 
 function onAccionFiltroToggle() {
@@ -3385,6 +3387,19 @@ async function fetchCoordsJugador(jugador) {
   fdTiempo(fd);
   try {
     const r = await fetch('/api/coords-jugador', { method: 'POST', body: fd });
+    return r.ok ? await r.json() : [];
+  } catch { return []; }
+}
+
+async function fetchCoordsMulti(jugadores) {
+  const idxs = Array.from(partidosSel).sort((a,b)=>a-b);
+  if (!idxs.length || !jugadores.length) return [];
+  const fd = new FormData();
+  idxs.forEach(i => fd.append('archivo', archivosActuales[i]));
+  jugadores.forEach(j => fd.append('jugador', j));
+  fdTiempo(fd);
+  try {
+    const r = await fetch('/api/coords-multi', { method: 'POST', body: fd });
     return r.ok ? await r.json() : [];
   } catch { return []; }
 }
@@ -3656,8 +3671,17 @@ function renderRematesPorSuperficie(ind) {
     return `<div style="font-size:10px;color:var(--gris5);padding:6px 0 2px">Sin tags de superficie en estos remates. Etiquetá <i>Cabeza</i> / <i>Pie Habil</i> / <i>Pie Inhabil</i> en Sportcode para ver el desglose.</div>`;
   }
   const colorEf = ef => ef >= 50 ? 'green' : ef >= 30 ? 'amber' : 'red';
+  const GRID = 'grid-template-columns:1fr 28px 28px 28px 28px 32px 38px';
   let html = '<div class="ind-block-title sub">Por superficie</div>';
-  html += '<div style="display:grid;grid-template-columns:1fr 28px 28px 32px 38px;gap:4px 8px;font-size:10px;color:var(--gris5);padding:4px 0 2px;text-transform:uppercase;letter-spacing:.4px"><span></span><span style="text-align:right">Arco</span><span style="text-align:right">Gol</span><span style="text-align:right">Total</span><span style="text-align:right">Efect.</span></div>';
+  html += `<div style="display:grid;${GRID};gap:4px 8px;font-size:10px;color:var(--gris5);padding:4px 0 2px;text-transform:uppercase;letter-spacing:.4px">
+    <span></span>
+    <span style="text-align:right">Arco</span>
+    <span style="text-align:right">Gol</span>
+    <span style="text-align:right">Afu</span>
+    <span style="text-align:right">Bloq</span>
+    <span style="text-align:right">Total</span>
+    <span style="text-align:right">Efect.</span>
+  </div>`;
   filas.forEach(([lbl, pre]) => {
     const tot = ind[pre+'total']||0;
     const ef  = ind[pre+'efect']||0;
@@ -3665,10 +3689,12 @@ function renderRematesPorSuperficie(ind) {
     const gol  = ind[pre+'gol']||0;
     const afu  = ind[pre+'afuera']||0;
     const blo  = ind[pre+'bloq']||0;
-    html += `<div style="display:grid;grid-template-columns:1fr 28px 28px 32px 38px;gap:4px 8px;align-items:center;padding:3px 0;border-top:1px dashed var(--gris3)">
-      <span style="font-size:12px" title="Afuera ${afu} · Bloq ${blo}">${lbl}</span>
+    html += `<div style="display:grid;${GRID};gap:4px 8px;align-items:center;padding:3px 0;border-top:1px dashed var(--gris3)">
+      <span style="font-size:12px">${lbl}</span>
       <span class="ind-row-val red"   style="text-align:right">${arco}</span>
       <span class="ind-row-val amber" style="text-align:right">${gol}</span>
+      <span class="ind-row-val"       style="text-align:right">${afu}</span>
+      <span class="ind-row-val"       style="text-align:right">${blo}</span>
       <span class="ind-row-val"       style="text-align:right">${tot}</span>
       <span class="ind-row-val ${colorEf(ef)}" style="text-align:right">${ef}%</span>
     </div>`;
@@ -3819,6 +3845,11 @@ function buildIndHTML(ind) {
         const efc = ct ? Math.round(cc / ct * 100) : 0;
         const col = efc >= 35 ? 'green' : efc >= 20 ? 'amber' : ct ? 'red' : '';
         return `${ir('Centros (compl./tot.)', `${cc}/${ct}`, 'green')}${ir('% Centros completos', efc + '%', col)}`;
+      })()}
+      ${(() => {
+        const ap = ind.asist_pases || 0, ac = ind.asist_centros || 0, at = ind.asistencias || 0;
+        const sub = (ap || ac) ? ` <span style="color:var(--gris5);font-weight:500">(${ap} pase · ${ac} centro)</span>` : '';
+        return ir('Asistencias' + sub, at, at ? 'amber' : '');
       })()}
     </div>
 
