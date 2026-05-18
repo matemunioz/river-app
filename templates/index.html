@@ -1085,6 +1085,7 @@ function fdTiempo(fd) {
 
 async function analizarConFiltro({ mostrarStatus = false } = {}) {
   datosJugadores = null;
+  _notasTaggingCache = null; // recalcula notas con la selección nueva de partidos
   const idxs = Array.from(partidosSel).sort((a,b) => a-b);
   if (mostrarStatus) {
     document.getElementById('status-bar').style.display = 'flex';
@@ -1120,6 +1121,7 @@ async function analizarConFiltro({ mostrarStatus = false } = {}) {
     document.getElementById('status-bar').style.display = 'none';
     document.getElementById('drop-icon').textContent = '✅';
     renderResultados(data);
+    renderNotasTagging(); // tarjeta global de errores de tagging, debajo de los archivos
     // Precarga del plantel + selección automática del jugador más destacado
     fetchJugadoresStats().then(ds => {
       if (!ds) return;
@@ -1269,6 +1271,8 @@ function renderResultados(d) {
     ` : ''}
     <button class="btn" style="padding:4px 10px;font-size:11px;border-color:var(--gris5)" onclick="document.getElementById('fi').click()">＋ Agregar partido</button>
   </div>` : ''}
+
+  <div id="notas-tagging-container" style="margin-bottom:1.2rem"></div>
 
   <div class="tiempo-filter">
     <label>⏱ Minuto</label>
@@ -1917,8 +1921,18 @@ function sumarJugadores(lista) {
       if (typeof v === 'number') out[k] = (out[k]||0) + v;
     });
   });
+  // Recalcular todos los porcentajes / efectividades sobre los totales sumados
+  // (caso contrario quedaron sumados los % de cada jugador: 50%+75%+... = 766%)
   const pt = out.pases_total || 0;
   out.pases_efect = pt ? Math.round((out.pases_completos||0)/pt*100) : 0;
+  // Efectividades de remate (global + por superficie)
+  const recEf = (pre) => {
+    const arco = out[pre+'arco']||0, gol = out[pre+'gol']||0, tot = out[pre+'total']||0;
+    out[pre+'efect'] = tot ? Math.round((arco+gol)/tot*100) : 0;
+  };
+  const rTot = out.remates_total||0;
+  out.remates_efect = rTot ? Math.round(((out.remates_arco||0)+(out.remates_gol||0))/rTot*100) : 0;
+  ['rem_cab_','rem_pieh_','rem_piei_'].forEach(recEf);
   return out;
 }
 
@@ -2100,6 +2114,113 @@ function renderColContent() {
     cont.innerHTML = buildIndHTML(sum);
     renderMapaTerritorial(); // dentro del HTML del colectivo
   });
+}
+
+let _notasTaggingCache = null;
+let notasTaggingAbierto = false;
+let notasTaggingTipo = 'todos';
+
+async function fetchNotasTagging() {
+  const idxs = Array.from(partidosSel).sort((a,b)=>a-b);
+  if (!idxs.length) return null;
+  const fd = new FormData();
+  idxs.forEach(i => fd.append('archivo', archivosActuales[i]));
+  fdTiempo(fd);
+  try {
+    const r = await fetch('/api/notas-tagging', { method: 'POST', body: fd });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+async function renderNotasTagging() {
+  const cont = document.getElementById('notas-tagging-container');
+  if (!cont) return;
+  if (!_notasTaggingCache) {
+    cont.innerHTML = '<p style="color:var(--gris5);padding:.6rem">Cargando notas de tagging…</p>';
+    _notasTaggingCache = await fetchNotasTagging();
+  }
+  const data = _notasTaggingCache;
+  if (!data) { cont.innerHTML = ''; return; }
+  if (!data.total) {
+    cont.innerHTML = `<div class="panel-card" style="border-color:var(--verde)">
+      <div style="color:var(--verde);font-weight:700">✓ Sin errores de tagging detectados</div>
+      <div style="font-size:11px;color:var(--gris5);margin-top:4px">Todas las acciones del/los partidos analizados están completas.</div>
+    </div>`;
+    return;
+  }
+
+  const TIPO_LBL = {
+    'remate_sin_superficie': '🥅 Remate sin superficie',
+    'remate_sin_resultado':  '🥅 Remate sin resultado',
+    'pase_contradictorio':   '↔ Pase contradictorio',
+    'centro_contradictorio': '↔ Centro contradictorio',
+    'sin_coordenada':        '📍 Sin coordenada (x,y)',
+  };
+
+  // Filtrar por tipo activo
+  const filtrados = notasTaggingTipo === 'todos'
+    ? data.issues
+    : data.issues.filter(i => i.tipo === notasTaggingTipo);
+
+  // Agrupar por jugador para mostrar
+  const porJug = {};
+  filtrados.forEach(i => {
+    (porJug[i.jugador] = porJug[i.jugador] || []).push(i);
+  });
+  const jugsOrdenados = Object.keys(porJug).sort((a,b) => porJug[b].length - porJug[a].length);
+
+  const tiposChips = Object.entries(data.resumen).map(([t, n]) => `
+    <button class="chip-toggle ${notasTaggingTipo===t?'active':''}" onclick="setNotasTaggingTipo('${t}')">
+      ${TIPO_LBL[t]||t} (${n})
+    </button>`).join('');
+
+  cont.innerHTML = `
+    <div class="panel-card" style="border-color:#5a3a1a">
+      <div style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none" onclick="toggleNotasTagging()">
+        <span style="font-size:14px;font-weight:800;color:var(--ambar)">⚠ Notas de tagging · ${data.total} acción(es) con problemas</span>
+        <span style="margin-left:auto;color:var(--gris5);font-size:11px">${notasTaggingAbierto?'▾ ocultar':'▸ ver detalle'}</span>
+      </div>
+      ${notasTaggingAbierto ? `
+        <div style="margin-top:.8rem;display:flex;flex-wrap:wrap;gap:5px;align-items:center">
+          <button class="chip-toggle ${notasTaggingTipo==='todos'?'active':''}" onclick="setNotasTaggingTipo('todos')">Todos (${data.total})</button>
+          ${tiposChips}
+        </div>
+        <div style="margin-top:.8rem;max-height:420px;overflow-y:auto;border:1px solid var(--gris3);border-radius:6px">
+          ${jugsOrdenados.length ? jugsOrdenados.map(jug => `
+            <div style="border-bottom:1px solid var(--gris3)">
+              <div style="background:var(--gris2);padding:6px 12px;font-weight:700;font-size:12px">
+                ${jug} <span style="color:var(--gris5);font-weight:500">· ${porJug[jug].length} acción(es)</span>
+              </div>
+              ${porJug[jug].map(i => `
+                <div style="display:grid;grid-template-columns:75px 1fr 150px;gap:10px;padding:6px 12px;border-top:1px dashed var(--gris3);font-size:11.5px;align-items:center">
+                  <span style="font-family:ui-monospace,monospace;color:var(--ambar);font-weight:700">${i.minuto}</span>
+                  <span>
+                    <div style="color:var(--blanco)">${TIPO_LBL[i.tipo]||i.tipo}</div>
+                    <div style="color:var(--gris5);font-size:10.5px">tags: <code style="color:#ccc;background:var(--gris3);padding:1px 5px;border-radius:3px">${escAttrJS(i.tags||'—')}</code></div>
+                  </span>
+                  <span style="color:var(--gris5);font-size:10.5px;text-align:right">${i.partido}</span>
+                </div>`).join('')}
+            </div>
+          `).join('') : '<p style="color:var(--gris5);padding:1rem;text-align:center">Sin errores de este tipo.</p>'}
+        </div>
+        <div style="font-size:10.5px;color:var(--gris5);margin-top:8px">
+          Corregí estos tags en Sportcode para limpiar las estadísticas. Después volvé a importar el export.
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function escAttrJS(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function toggleNotasTagging() {
+  notasTaggingAbierto = !notasTaggingAbierto;
+  renderNotasTagging();
+}
+
+function setNotasTaggingTipo(t) {
+  notasTaggingTipo = t;
+  renderNotasTagging();
 }
 
 function renderCreadorContent() {

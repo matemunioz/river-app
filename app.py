@@ -4,6 +4,7 @@ app.py — River Plate Videoanálisis · Backend Flask
 
 import io
 from pathlib import Path
+import pandas as pd
 from flask import Flask, jsonify, render_template, request, send_file
 import parser as sc
 import pdf_gen as pg
@@ -245,6 +246,81 @@ def _coords_de_jugadores(dfs, jugadores):
                 "jugador": str(r["Row"]),
             })
     return acciones
+
+
+@app.route("/api/notas-tagging", methods=["POST"])
+def notas_tagging():
+    """Detecta acciones con tagging incompleto para que el analista las pueda corregir
+    en Sportcode (devuelve partido, minuto, jugador, tags actuales y qué falta)."""
+    try:
+        dfs = leer_todos(request)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+    REMATE_TAGS_NORM = {"tiros", "arco", "afuera", "bloqueado", "gol"}
+    SUP_TAGS_NORM   = {"cabeza", "cabezazo", "pie habil", "pie inhabil", "habil", "inhabil"}
+    RESULTADO_REMATE_NORM = {"arco", "afuera", "bloqueado", "gol"}
+    PASE_RES_NORM      = {"pcompletos", "pincompletos"}
+    CENTRO_RES_NORM    = {"ccompletos", "cincompletos", "casistencia"}
+
+    issues = []
+    for df in dfs:
+        partido = sc.nombre_partido(df)
+        jugadores = set(sc.detectar_jugadores(df))
+        sub = df[df["Row"].isin(jugadores)]
+        for _, r in sub.iterrows():
+            tags = sc.get_tags(r)
+            if not tags:
+                continue
+            tags_norm = {sc._norm_tag(t) for t in tags}
+            jug   = str(r["Row"])
+            mins  = sc.seg_a_min(r["Start time"]) if pd.notna(r.get("Start time")) else "?"
+            tag_str = str(r.get("Ungrouped") or "")
+
+            def add(tipo, detalle):
+                issues.append({
+                    "tipo": tipo, "partido": partido, "minuto": mins,
+                    "jugador": jug, "tags": tag_str, "detalle": detalle,
+                })
+
+            # 1) Remate sin tag de superficie
+            es_remate = any(t in tags_norm for t in REMATE_TAGS_NORM)
+            if es_remate:
+                if not any(t in tags_norm for t in SUP_TAGS_NORM):
+                    add("remate_sin_superficie",
+                        "Remate sin superficie (falta Cabeza / Pie habil / Pie inhabil)")
+                if not any(t in tags_norm for t in RESULTADO_REMATE_NORM):
+                    add("remate_sin_resultado",
+                        "Remate sin resultado (falta Arco / Afuera / Bloqueado / Gol)")
+
+            # 2) Pase con tag PCompletos/PIncompletos pero ambos a la vez (contradicción)
+            if "pcompletos" in tags_norm and "pincompletos" in tags_norm:
+                add("pase_contradictorio",
+                    "Pase taggeado como Completo e Incompleto a la vez")
+
+            # 3) Centro con tag CCompletos/CIncompletos pero ambos a la vez
+            if "ccompletos" in tags_norm and "cincompletos" in tags_norm:
+                add("centro_contradictorio",
+                    "Centro taggeado como Completo e Incompleto a la vez")
+
+            # 4) Acción del jugador sin coordenada (importante para mapa territorial)
+            if pd.isna(r.get("x_start")) or pd.isna(r.get("y_start")):
+                # Sólo reportar si la acción "merece" coords (no es solo POSITIVO/NEGATIVO)
+                accionables = REMATE_TAGS_NORM | PASE_RES_NORM | CENTRO_RES_NORM | {
+                    "perdidas: xpase", "perdidas: xcontrol", "perdidas: xgambeta",
+                    "recuperacion xposicional", "recuperacion xintervencion", "tras perdida",
+                    "1v1o+", "1v1o-", "1v1d+", "1v1d-", "dao+", "dao-", "dad+", "dad-",
+                }
+                if any(t in tags_norm for t in accionables):
+                    add("sin_coordenada",
+                        "Acción sin coordenada (x,y) — no aparece en mapas")
+
+    # Resumen por tipo
+    resumen = {}
+    for it in issues:
+        resumen[it["tipo"]] = resumen.get(it["tipo"], 0) + 1
+
+    return jsonify({"total": len(issues), "resumen": resumen, "issues": issues})
 
 
 @app.route("/api/individual", methods=["POST"])
