@@ -465,6 +465,19 @@ def combinar_individuales(lista: list) -> dict:
     out["partidos"] = len(lista)
     p_tot = out.get("pases_total", 0)
     out["pases_efect"] = round(out.get("pases_completos", 0) / p_tot * 100) if p_tot else 0
+
+    # Recalcular efectividades de remate (totales y por superficie) sobre las sumas
+    def _rec_rem_ef(prefijo):
+        arco = out.get(f"{prefijo}arco", 0)
+        gol  = out.get(f"{prefijo}gol", 0)
+        tot  = out.get(f"{prefijo}total", 0)
+        out[f"{prefijo}efect"] = round((arco + gol) / tot * 100) if tot else 0
+    # Total global
+    rt_arco = out.get("remates_arco", 0); rt_gol = out.get("remates_gol", 0)
+    rt_tot = out.get("remates_total", 0)
+    out["remates_efect"] = round((rt_arco + rt_gol) / rt_tot * 100) if rt_tot else 0
+    for pre in ("rem_cab_", "rem_pieh_", "rem_piei_"):
+        _rec_rem_ef(pre)
     if isinstance(out.get("minutos"), float):
         out["minutos"] = round(out["minutos"], 1)
 
@@ -510,6 +523,13 @@ def _tiene(tags: set, *args) -> bool:
     return all(a in tags for a in args)
 
 
+_TILDES = str.maketrans("áéíóúÁÉÍÓÚñÑ", "aeiouAEIOUnN")
+
+def _norm_tag(s: str) -> str:
+    """Normaliza un tag para comparación: lowercase, sin tildes, espacios colapsados."""
+    return " ".join(str(s).translate(_TILDES).lower().split())
+
+
 def estadisticas_individuales(df: pd.DataFrame, jugador: str) -> dict:
     """
     Extrae métricas individuales desde la columna Ungrouped.
@@ -531,6 +551,8 @@ def estadisticas_individuales(df: pd.DataFrame, jugador: str) -> dict:
     p_largo_c = p_largo_i = p_filtrado = p_clave = p_apoyo = 0
     c_compl = c_incompl = 0
     tiro_arco = tiro_afuera = tiro_bloq = tiro_gol = 0
+    # Remates por superficie (cab=cabeza, pieh=pie hábil, piei=pie inhábil, sd=sin dato)
+    rem_sup = {s: {"arco": 0, "gol": 0, "afuera": 0, "bloq": 0} for s in ("cab", "pieh", "piei", "sd")}
     duelo_o_g = duelo_o_p = duelo_d_g = duelo_d_p = 0
     aereo_o_g = aereo_o_p = aereo_d_g = aereo_d_p = 0
     regate_c = regate_i = 0
@@ -580,6 +602,20 @@ def estadisticas_individuales(df: pd.DataFrame, jugador: str) -> dict:
             if "Gol" in t:       tiro_gol += 1
             if "Afuera" in t:    tiro_afuera += 1
             if "Bloqueado" in t: tiro_bloq += 1
+            # Superficie de remate (cabeza / pie hábil / pie inhábil). Matching insensible a
+            # mayúsculas y tildes para cubrir variaciones de tagging ("Pie habil", "Pie Hábil", etc.)
+            t_norm = {_norm_tag(x) for x in t}
+            sup = "sd"
+            if "cabeza" in t_norm or "cabezazo" in t_norm:
+                sup = "cab"
+            elif "pie inhabil" in t_norm or "pie no habil" in t_norm or "inhabil" in t_norm:
+                sup = "piei"  # chequear inhábil PRIMERO (contiene "habil" como substring)
+            elif "pie habil" in t_norm or "habil" in t_norm:
+                sup = "pieh"
+            if "Arco" in t:      rem_sup[sup]["arco"]   += 1
+            if "Gol" in t:       rem_sup[sup]["gol"]    += 1
+            if "Afuera" in t:    rem_sup[sup]["afuera"] += 1
+            if "Bloqueado" in t: rem_sup[sup]["bloq"]   += 1
 
         # ── DUELOS 1V1 ───────────────────────────────────────────────────
         if "Duelos 1V1" in t or "1v1O+" in t or "1v1O-" in t or "1v1D+" in t or "1v1D-" in t:
@@ -668,17 +704,29 @@ def estadisticas_individuales(df: pd.DataFrame, jugador: str) -> dict:
     p_total = p_compl + p_incompl
     p_efect = round(p_compl / p_total * 100) if p_total else 0
 
+    # Totales y efectividades por superficie de remate.
+    # Efectividad = (al arco + goles) / total de remates con esa superficie.
+    rem_totales = {s: sum(v.values()) for s, v in rem_sup.items()}
+    def _ef(s):
+        tot = rem_totales[s]
+        return round((rem_sup[s]["arco"] + rem_sup[s]["gol"]) / tot * 100) if tot else 0
+    rem_efect = {s: _ef(s) for s in rem_sup}
+
     # Goles y asistencias cruzando con goles propios
     goles_jug = tiro_gol  # ya contados arriba desde los tags del jugador
     asistencias = 0
-    # La asistencia la buscamos en los goles propios
+    # La asistencia la buscamos en los goles propios.
+    # Cuenta tanto pase clave (PCompletos+Clave) como centro asistencia (CAsistencia, con o sin CCompletos)
     goles_prop_df = df[df["Row"] == "Goles Propios"]
     for _, grow in goles_prop_df.iterrows():
         t_gol = grow["Start time"]
         previas = sub[(sub["Start time"] <= t_gol + 2) & (sub["Start time"] >= t_gol - 30)]
         for _, prev_row in previas.iterrows():
             prev_tags = get_tags(prev_row)
-            if ("CCompletos" in prev_tags or "PCompletos" in prev_tags) and ("Clave" in prev_tags or "CAsistencia" in prev_tags):
+            if "CAsistencia" in prev_tags:
+                asistencias += 1
+                break
+            if "Clave" in prev_tags and ("PCompletos" in prev_tags or "CCompletos" in prev_tags):
                 asistencias += 1
                 break
 
@@ -710,6 +758,28 @@ def estadisticas_individuales(df: pd.DataFrame, jugador: str) -> dict:
         "remates_gol":      tiro_gol,
         "remates_afuera":   tiro_afuera,
         "remates_bloq":     tiro_bloq,
+        "remates_total":    tiro_arco + tiro_gol + tiro_afuera + tiro_bloq,
+        "remates_efect":    round((tiro_arco + tiro_gol) / (tiro_arco + tiro_gol + tiro_afuera + tiro_bloq) * 100) if (tiro_arco + tiro_gol + tiro_afuera + tiro_bloq) else 0,
+        # remates por superficie
+        "rem_cab_arco":     rem_sup["cab"]["arco"],
+        "rem_cab_gol":      rem_sup["cab"]["gol"],
+        "rem_cab_afuera":   rem_sup["cab"]["afuera"],
+        "rem_cab_bloq":     rem_sup["cab"]["bloq"],
+        "rem_cab_total":    rem_totales["cab"],
+        "rem_cab_efect":    rem_efect["cab"],
+        "rem_pieh_arco":    rem_sup["pieh"]["arco"],
+        "rem_pieh_gol":     rem_sup["pieh"]["gol"],
+        "rem_pieh_afuera":  rem_sup["pieh"]["afuera"],
+        "rem_pieh_bloq":    rem_sup["pieh"]["bloq"],
+        "rem_pieh_total":   rem_totales["pieh"],
+        "rem_pieh_efect":   rem_efect["pieh"],
+        "rem_piei_arco":    rem_sup["piei"]["arco"],
+        "rem_piei_gol":     rem_sup["piei"]["gol"],
+        "rem_piei_afuera":  rem_sup["piei"]["afuera"],
+        "rem_piei_bloq":    rem_sup["piei"]["bloq"],
+        "rem_piei_total":   rem_totales["piei"],
+        "rem_piei_efect":   rem_efect["piei"],
+        "rem_sd_total":     rem_totales["sd"],
         # duelos 1v1
         "dao_plus":         duelo_o_g,
         "dao_minus":        duelo_o_p,

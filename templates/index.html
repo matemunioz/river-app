@@ -1085,6 +1085,7 @@ function fdTiempo(fd) {
 
 async function analizarConFiltro({ mostrarStatus = false } = {}) {
   datosJugadores = null;
+  mapaTerInit = false;  // recalcula default de jugadores visibles al cambiar partidos
   const idxs = Array.from(partidosSel).sort((a,b) => a-b);
   if (mostrarStatus) {
     document.getElementById('status-bar').style.display = 'flex';
@@ -1135,7 +1136,7 @@ async function analizarConFiltro({ mostrarStatus = false } = {}) {
         if (inp && jugadorActivo) inp.value = jugadorActivo;
       }
       if (jugadorActivo) renderIndividual(jugadorActivo);
-      // Re-render colectivo/creador si están activos
+      // Re-render del panel activo cuando llegan stats nuevas
       if (tabActiva === 'colectivo') renderColContent();
       else if (tabActiva === 'creador') renderCreadorContent();
     });
@@ -1197,9 +1198,11 @@ function switchTab(id, el) {
         document.querySelectorAll('[data-jug]').forEach(b => { b.checked = jugadoresSel.has(b.dataset.jug); });
       }
       if (id === 'colectivo') renderColContent();
-      else renderCreadorContent();
+      else if (id === 'creador') renderCreadorContent();
     })();
   }
+  // Re-sync del Mapa en cancha al cambiar de tab: el panel recién visible refleja el estado actual de filtros/modo
+  if (typeof _redibujarCancha === 'function') _redibujarCancha();
 }
 
 function renderResultados(d) {
@@ -1570,6 +1573,7 @@ function renderResultados(d) {
           </div>`).join('') : '<p style="color:var(--gris5);padding:.5rem 0">Sin cambios registrados.</p>'}
       </div>
     </div>
+
   </div>
 
   <!-- INDIVIDUAL -->
@@ -2068,6 +2072,8 @@ function renderColContent() {
   sum.__esColectivo = true;
   sum.__seleccionados = seleccionados;
   cont.innerHTML = buildIndHTML(sum);
+  // El mapa territorial vive dentro del bloque colectivo de buildIndHTML
+  renderMapaTerritorial();
 }
 
 function renderCreadorContent() {
@@ -2559,6 +2565,7 @@ function renderEficiencia(col) {
     { l: 'Conversión',          v: conv + '%',  sub: `${goles} gol${goles!==1?'es':''} / ${sg} sit. gol`,    color: conv >= 25 ? 'green' : conv >= 12 ? 'amber' : 'red' },
     { l: 'Generación',          v: gen  + '%',  sub: `${sg} sit. gol / ${tot} llegadas`,                    color: gen  >= 30 ? 'green' : gen  >= 15 ? 'amber' : 'red' },
     { l: 'Remate al arco',      v: efRem+ '%',  sub: `${lp.tiros_arco} al arco / ${tot} llegadas`,          color: efRem>= 40 ? 'green' : efRem>= 25 ? 'amber' : 'red' },
+    { l: 'Centros completos',   v: efCen+ '%',  sub: `${cp.completos||0} completos / ${cp.total||0} totales`, color: efCen>= 35 ? 'green' : efCen>= 20 ? 'amber' : 'red' },
   ];
   return `<div class="efic-grid">${cards.map(c => `
     <div class="efic-card">
@@ -2609,14 +2616,15 @@ let resumenDetalleAbierto = null;  // 'llegadas' | 'sit_gol' | 'remates' | 'recu
 let resumenFiltro = 'total';        // filtro dentro del detalle
 // Filtro de tipo de acción en la cancha (default: todos activos)
 const CATS_ACCION = [
-  ['pases',   'Pases',           ['PCompletos','PIncompletos','PASES']],
-  ['centros', 'Centros',         ['CCompletos','CIncompletos','CENTROS','CAsistencia']],
-  ['recup',   'Recuperaciones',  ['RECUPERACION xPosicional','RECUPERACION xIntervencion','Tras Perdida']],
-  ['perd',    'Pérdidas',        ['PERDIDAS: xPase','PERDIDAS: xControl','PERDIDAS: xGambeta']],
-  ['remates', 'Remates',         ['Tiros','Arco','Afuera','Bloqueado','Gol']],
-  ['duelos',  'Duelos',          ['Duelos 1V1','1v1O+','1v1O-','1v1D+','1v1D-','Duelos Aereos','DAO+','DAO-','DAD+','DAD-','Regates','R+','R-']],
-  ['defensa', 'Defensa',         ['Intervencion Defensiva','Despeje','Bloqueos','Entradas','Intercepciones','E+','E-','I+','I-','B+','B-','A+','A-']],
-  ['recep',   'Recepciones',     ['Recepcion entre Lineas','Recepcion al espacio','Recepcion a espaldas del volante','Toques en Area Rival','Ruptura en conduccion']],
+  ['pases',      'Pases',          ['PCompletos','PIncompletos','PASES']],
+  ['centros',    'Centros',        ['CCompletos','CIncompletos','CENTROS','CAsistencia']],
+  ['recup',      'Recuperaciones', ['RECUPERACION xPosicional','RECUPERACION xIntervencion','Tras Perdida']],
+  ['perd',       'Pérdidas',       ['PERDIDAS: xPase','PERDIDAS: xControl','PERDIDAS: xGambeta']],
+  ['remates',    'Remates',        ['Tiros','Arco','Afuera','Bloqueado','Gol']],
+  ['duelos_of',  'Duelos OF',      ['1v1O+','1v1O-','DAO+','DAO-','Regates','R+','R-','Duelos 1V1','Duelos Aereos']],
+  ['duelos_def', 'Duelos DEF',     ['1v1D+','1v1D-','DAD+','DAD-']],
+  ['defensa',    'Defensa',        ['Intervencion Defensiva','Despeje','Bloqueos','Entradas','Intercepciones','E+','E-','I+','I-','B+','B-','A+','A-']],
+  ['recep',      'Recepciones',    ['Recepcion entre Lineas','Recepcion al espacio','Recepcion a espaldas del volante','Toques en Area Rival','Ruptura en conduccion']],
 ];
 let accionFiltros = new Set(CATS_ACCION.map(c => c[0]));
 
@@ -3017,6 +3025,14 @@ function dibujarCancha(acciones, modo = 'calor') {
   if (modo === 'puntos') {
     acciones.forEach(a => {
       const out = _outcomeAccion(a.tags);
+      const esGol = /(^|,)\s*Gol\s*(,|$)/.test(a.tags || '');
+      if (esGol) {
+        const r = 2.8;
+        svg += `<g data-pitch-tip="${escAttr(_tituloAccion(a))}" style="cursor:default">` +
+               `<image href="/static/pelota.png" x="${a.x - r}" y="${a.y - r}" width="${r*2}" height="${r*2}" preserveAspectRatio="xMidYMid meet"/>` +
+               `</g>`;
+        return;
+      }
       const color = out === 'neg' ? '#CC0000'
                   : a.area        ? '#f5a623'
                   :                 '#3ecf8e';
@@ -3063,32 +3079,293 @@ function dibujarCancha(acciones, modo = 'calor') {
   return svg;
 }
 
+function _pitchScopes() {
+  // Devuelve sólo los pitch-section dentro del/los panel(es) visibles
+  // (individual y colectivo renderizan ambos un pitch — necesitamos actualizar el visible).
+  return Array.from(document.querySelectorAll('.tab-panel.active .pitch-section'));
+}
+
 function setPitchModo(m) {
   pitchModo = m;
-  const cont = document.getElementById('pitch-container');
-  if (cont) cont.innerHTML = dibujarCancha(coordsActuales, m);
-  document.querySelectorAll('.pitch-modos button').forEach((b, i) => {
-    b.classList.toggle('active',
-      (i === 0 && m === 'calor') || (i === 1 && m === 'puntos') || (i === 2 && m === 'flechas'));
+  _pitchScopes().forEach(sec => {
+    const cont = sec.querySelector('[id="pitch-container"]');
+    if (cont) cont.innerHTML = dibujarCancha(coordsActuales, m);
+    sec.querySelectorAll('.pitch-modos button').forEach((b, i) => {
+      b.classList.toggle('active',
+        (i === 0 && m === 'calor') || (i === 1 && m === 'puntos') || (i === 2 && m === 'flechas'));
+    });
   });
 }
 
 function _redibujarCancha() {
-  const cont = document.getElementById('pitch-container');
-  if (cont) cont.innerHTML = dibujarCancha(coordsActuales, pitchModo);
+  const visibles = _filtrarPorCat(coordsActuales).length;
+  _pitchScopes().forEach(sec => {
+    const cont = sec.querySelector('[id="pitch-container"]');
+    if (cont) cont.innerHTML = dibujarCancha(coordsActuales, pitchModo);
+    const counter = sec.querySelector('[id="pitch-count"]');
+    if (counter) counter.textContent = visibles;
+    sec.querySelectorAll('.pitch-modos button').forEach((b, i) => {
+      b.classList.toggle('active',
+        (i === 0 && pitchModo === 'calor') || (i === 1 && pitchModo === 'puntos') || (i === 2 && pitchModo === 'flechas'));
+    });
+  });
+}
+
+// ─── Mapa territorial (posiciones medias del equipo, interactivo) ──────────
+let mapaTerJugSel = new Set();
+let mapaTerInit = false;       // primera vez auto-selecciona titulares
+let mapaTerMinMinutos = 20;    // descarta jugadores con < N min para que no ensucie
+let mapaTerZonasActivas = new Set(['def','med','atk']); // filtro por zona; vacío = oculta todo, completo = no filtra
+
+function _calcularLineasEquipo(jugadores, datos) {
+  // Mismo criterio que pdf_gen._calcular_lineas (cuartiles por x)
+  const elig = jugadores
+    .filter(j => datos[j] && (datos[j].minutos||0) >= mapaTerMinMinutos && (datos[j].acciones_xy||0) > 0)
+    .map(j => ({ j, x: datos[j].centro_grav_x || 0, y: datos[j].centro_grav_y || 0 }));
+  if (elig.length < 6) {
+    return new Map(elig.map(e => [e.j, 'medio']));
+  }
+  elig.sort((a, b) => a.x - b.x);
+  const n = elig.length;
+  const nDef = Math.max(3, Math.floor(n / 3));
+  const nAtk = Math.max(2, Math.floor(n / 4));
+  let nMid = n - nDef - nAtk;
+  if (nMid <= 0) nMid = 1;
+  const linea = new Map();
+  elig.slice(0, nDef).forEach(e => linea.set(e.j, 'def'));
+  elig.slice(nDef, nDef + nMid).forEach(e => linea.set(e.j, 'med'));
+  elig.slice(nDef + nMid).forEach(e => linea.set(e.j, 'atk'));
+  return linea;
+}
+
+function _apellidoCorto(nombre) {
+  const partes = (nombre||'').split(/\s+/).filter(Boolean);
+  if (!partes.length) return '?';
+  // Si el último token parece una inicial ("B.", "M.A."), usar el penúltimo (probable apellido)
+  const ult = partes[partes.length - 1];
+  if (/^([A-ZÁÉÍÓÚÑ]\.){1,3}$/.test(ult) && partes.length > 1) {
+    return partes[partes.length - 2].slice(0, 12);
+  }
+  return ult.slice(0, 12);
+}
+
+function dibujarMapaTerritorial(visibles, datos) {
+  const COL = { def: '#3ecf8e', med: '#ffffff', atk: '#CC0000' };
+  const lineas = _calcularLineasEquipo(visibles, datos);
+  let svg = `<svg viewBox="0 0 120 80" preserveAspectRatio="xMidYMid meet" class="pitch-svg" style="width:100%;height:auto;background:#141414">`;
+  svg += `<rect width="120" height="80" fill="#141414"/>`;
+
+  // Bandas verticales: promedio x por línea — solo para zonas activas
+  const grupos = { def: [], med: [], atk: [] };
+  visibles.forEach(j => {
+    const d = datos[j]; if (!d) return;
+    const grp = lineas.get(j); if (!grp) return;
+    grupos[grp].push(d.centro_grav_x || 0);
+  });
+  Object.entries(grupos).forEach(([k, xs]) => {
+    if (!xs.length || !mapaTerZonasActivas.has(k)) return;
+    const avg = xs.reduce((s,x) => s+x, 0) / xs.length;
+    svg += `<line x1="${avg}" y1="2" x2="${avg}" y2="78" stroke="${COL[k]}" stroke-width="0.35" stroke-dasharray="2,1.5" opacity="0.55"/>`;
+  });
+
+  svg += _pitchLines();
+
+  const escAttr = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+
+  // Construir set de jugadores efectivamente visibles (después de min minutos + zona)
+  const items = [];
+  visibles.forEach(j => {
+    const d = datos[j]; if (!d) return;
+    if ((d.acciones_xy||0) === 0) return;
+    if ((d.minutos||0) < mapaTerMinMinutos) return;
+    const grp = lineas.get(j) || 'med';
+    if (!mapaTerZonasActivas.has(grp)) return;
+    const cx = d.centro_grav_x || 0;
+    const cy = 80 - (d.centro_grav_y || 0);
+    items.push({
+      j, cx, cy, color: COL[grp],
+      label: _apellidoCorto(j),
+      tip: `${j} · CG (${cx.toFixed(0)}, ${(d.centro_grav_y||0).toFixed(0)}) · ${d.minutos||0}m · ${d.acciones_xy||0} acc.`,
+    });
+  });
+
+  // Anti-colisión de etiquetas: para cada label probamos 8 posiciones y elegimos la primera sin solape.
+  const CHARW = 1.45, FH = 3.3, PAD = 0.4;
+  const placed = []; // rects ocupados (incluye los puntos para evitar pisar marcadores)
+  items.forEach(it => { placed.push({ x: it.cx - 2.6, y: it.cy - 2.6, w: 5.2, h: 5.2 }); });
+  function colisiona(r) {
+    return placed.some(p =>
+      !(r.x + r.w + PAD < p.x || p.x + p.w + PAD < r.x ||
+        r.y + r.h + PAD < p.y || p.y + p.h + PAD < r.y));
+  }
+  // Procesar los más conflictivos primero (más vecinos cercanos)
+  items.sort((a, b) => {
+    const vec = o => items.filter(x => x !== o && Math.hypot(x.cx - o.cx, x.cy - o.cy) < 9).length;
+    return vec(b) - vec(a);
+  });
+  items.forEach(it => {
+    const w = it.label.length * CHARW;
+    // [ox_text, oy_baseline] respecto a (cx, cy) — el texto va con anchor="start"
+    const cands = [
+      [ 3.0,  0.9], [-(w + 3.0),  0.9],                       // der, izq
+      [-w/2, -3.2], [-w/2,  5.4],                             // arriba, abajo
+      [ 3.0, -3.2], [-(w + 3.0), -3.2],                       // der-arr, izq-arr
+      [ 3.0,  5.4], [-(w + 3.0),  5.4],                       // der-aba, izq-aba
+      [ 6.0,  0.9], [-(w + 6.0),  0.9],                       // der lejos, izq lejos
+    ];
+    let pick = null;
+    for (const [ox, oy] of cands) {
+      const r = { x: it.cx + ox - PAD, y: it.cy + oy - FH + 0.5, w: w + 2*PAD, h: FH };
+      if (r.x < 0.2 || r.x + r.w > 119.8) continue;
+      if (r.y < 0.2 || r.y + r.h > 79.8) continue;
+      if (!colisiona(r)) { pick = { ox, oy, r }; break; }
+    }
+    if (!pick) {
+      const r = { x: it.cx + 3.0 - PAD, y: it.cy + 0.9 - FH + 0.5, w: w + 2*PAD, h: FH };
+      pick = { ox: 3.0, oy: 0.9, r };
+    }
+    it.tx = it.cx + pick.ox;
+    it.ty = it.cy + pick.oy;
+    it.lw = w;
+    placed.push(pick.r);
+  });
+
+  // Dibujar todos los marcadores primero (van debajo de labels)
+  items.forEach(it => {
+    svg += `<g data-pitch-tip="${escAttr(it.tip)}">`;
+    svg += `<circle cx="${it.cx}" cy="${it.cy}" r="2.4" fill="#0a0a0a"/>`;
+    svg += `<circle cx="${it.cx}" cy="${it.cy}" r="1.9" fill="${it.color}" stroke="#0a0a0a" stroke-width="0.3"/>`;
+    svg += `</g>`;
+  });
+  // Después leader lines + labels con fondo semitransparente
+  items.forEach(it => {
+    const labCx = it.tx + it.lw / 2;
+    const labCy = it.ty - 1;
+    const dist = Math.hypot(labCx - it.cx, labCy - it.cy);
+    if (dist > 4.5) {
+      const ang = Math.atan2(labCy - it.cy, labCx - it.cx);
+      const x1 = it.cx + Math.cos(ang) * 2.3;
+      const y1 = it.cy + Math.sin(ang) * 2.3;
+      const x2 = labCx - Math.cos(ang) * (it.lw / 2 + 0.2);
+      const y2 = labCy - Math.sin(ang) * (FH / 2 + 0.2);
+      svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${it.color}" stroke-width="0.25" opacity="0.65"/>`;
+    }
+    svg += `<rect x="${it.tx - 0.5}" y="${it.ty - 2.5}" width="${it.lw + 1}" height="3.2" fill="#0a0a0a" fill-opacity="0.6" rx="0.5"/>`;
+    svg += `<text x="${it.tx}" y="${it.ty}" fill="#fff" font-size="2.4" font-weight="bold">${escAttr(it.label)}</text>`;
+  });
+
+  svg += `<text x="118" y="78" fill="#888" font-size="2.4" text-anchor="end">→ ataque</text>`;
+  svg += '</svg>';
+  return svg;
+}
+
+function _mapaTerInit() {
+  if (mapaTerInit || !datosJugadores) return;
+  // Default: titulares con minutos suficientes
+  const titulares = Object.keys(datosJugadores).filter(j => datosJugadores[j].condicion === 'Titular' && (datosJugadores[j].minutos||0) >= mapaTerMinMinutos);
+  mapaTerJugSel = new Set(titulares.length ? titulares : Object.keys(datosJugadores));
+  mapaTerInit = true;
+}
+
+function renderMapaTerritorial() {
+  const cont = document.getElementById('mapa-ter-container');
+  if (!cont) return;
+  if (!datosJugadores || !Object.keys(datosJugadores).length) {
+    cont.innerHTML = '<p style="color:var(--gris5);padding:1rem">Cargando posiciones…</p>';
+    return;
+  }
+  _mapaTerInit();
+  const todos = Object.keys(datosJugadores).sort();
+  const visibles = todos.filter(j => mapaTerJugSel.has(j));
+  const lineas = _calcularLineasEquipo(visibles, datosJugadores);
+  const cuenta = { def: 0, med: 0, atk: 0 };
+  visibles.forEach(j => { const g = lineas.get(j); if (g) cuenta[g==='def'?'def':g==='atk'?'atk':'med']++; });
+  const partidosTxt = (datosActuales?.partidos?.length || 1) + ' partido(s) seleccionados';
+
+  cont.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:.6rem">
+      <div class="perfil-titulo" style="margin:0">🗺 Mapa territorial · ${visibles.length}/${todos.length} jugadores · ${partidosTxt}</div>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:12px;font-size:11px;color:var(--gris5)">
+        <span><span style="display:inline-block;width:9px;height:9px;background:#3ecf8e;border-radius:50%;margin-right:5px;vertical-align:middle"></span>Defensa (${cuenta.def})</span>
+        <span><span style="display:inline-block;width:9px;height:9px;background:#fff;border-radius:50%;margin-right:5px;vertical-align:middle"></span>Mediocampo (${cuenta.med})</span>
+        <span><span style="display:inline-block;width:9px;height:9px;background:#CC0000;border-radius:50%;margin-right:5px;vertical-align:middle"></span>Ataque (${cuenta.atk})</span>
+      </span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:.6rem">
+      <span style="font-size:10px;color:var(--gris5);text-transform:uppercase;letter-spacing:.6px;margin-right:6px;font-weight:700">Presets:</span>
+      <button class="chip-toggle" onclick="presetMapaTer('todos')">👥 Todos</button>
+      <button class="chip-toggle" onclick="presetMapaTer('titulares')">⭐ Titulares</button>
+      <button class="chip-toggle" onclick="presetMapaTer('ninguno')">✕ Limpiar</button>
+      <span style="font-size:10px;color:var(--gris5);text-transform:uppercase;letter-spacing:.6px;margin-left:14px;margin-right:4px;font-weight:700">Zona:</span>
+      ${[['def','🛡 Defensa'],['med','⚙ Mediocampo'],['atk','⚔ Ataque']].map(([k,lbl]) => `
+        <label class="part-chip" style="padding:3px 9px">
+          <input type="checkbox" ${mapaTerZonasActivas.has(k)?'checked':''} onchange="toggleMapaTerZona('${k}', this.checked)">
+          <span style="font-size:10.5px">${lbl}</span>
+        </label>`).join('')}
+      <label style="font-size:10.5px;color:var(--gris5);display:flex;align-items:center;gap:6px;margin-left:auto">
+        Mín. min:
+        <input type="number" min="0" max="200" value="${mapaTerMinMinutos}" style="width:48px;background:var(--gris3);color:var(--blanco);border:1px solid var(--gris4);padding:3px 6px;border-radius:4px;font-size:11px" onchange="mapaTerMinMinutos=parseInt(this.value)||0;renderMapaTerritorial()">
+      </label>
+    </div>
+    <div id="mapa-ter-jug-filter" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:.8rem">
+      ${todos.map(j => {
+        const ok = mapaTerJugSel.has(j);
+        const min = datosJugadores[j].minutos || 0;
+        const acc = datosJugadores[j].acciones_xy || 0;
+        const sinDatos = acc === 0;
+        return `<label class="part-chip" style="${sinDatos?'opacity:.45':''}" title="${min}m · ${acc} acciones c/coord.">
+          <input type="checkbox" ${ok?'checked':''} ${sinDatos?'disabled':''} onchange="toggleMapaTerJug('${j.replace(/'/g,"\\'")}', this.checked)">
+          <span>${j}</span>
+        </label>`;
+      }).join('')}
+    </div>
+    <div style="border:1px solid var(--gris3);border-radius:8px;overflow:hidden">${dibujarMapaTerritorial(visibles, datosJugadores)}</div>
+    <div style="font-size:10.5px;color:var(--gris5);margin-top:8px;text-align:center">
+      Posición media calculada sobre todas las acciones con coordenadas del jugador, agregada por los partidos seleccionados arriba. Las líneas verticales marcan el x̄ por línea (defensa / mediocampo / ataque).
+    </div>
+  `;
+}
+
+function toggleMapaTerJug(j, on) {
+  if (on) mapaTerJugSel.add(j); else mapaTerJugSel.delete(j);
+  renderMapaTerritorial();
+}
+
+function toggleMapaTerZona(z, on) {
+  if (on) mapaTerZonasActivas.add(z); else mapaTerZonasActivas.delete(z);
+  renderMapaTerritorial();
+}
+
+function presetMapaTer(preset) {
+  if (!datosJugadores) return;
+  const todos = Object.keys(datosJugadores);
+  if (preset === 'todos') {
+    mapaTerJugSel = new Set(todos.filter(j => (datosJugadores[j].acciones_xy||0) > 0));
+  } else if (preset === 'titulares') {
+    mapaTerJugSel = new Set(todos.filter(j => datosJugadores[j].condicion === 'Titular' && (datosJugadores[j].acciones_xy||0) > 0));
+  } else if (preset === 'ninguno') {
+    mapaTerJugSel = new Set();
+  }
+  renderMapaTerritorial();
 }
 
 function onAccionFiltroToggle() {
+  // Leer el estado del panel activo (donde el usuario tildó) y propagar al otro panel
+  const scope = _pitchScopes()[0];
+  if (!scope) return;
   accionFiltros = new Set();
-  document.querySelectorAll('#pitch-acciones-filter input[type=checkbox][data-cat]').forEach(b => {
+  scope.querySelectorAll('[id="pitch-acciones-filter"] input[type=checkbox][data-cat]').forEach(b => {
     if (b.checked) accionFiltros.add(b.dataset.cat);
+  });
+  document.querySelectorAll('[id="pitch-acciones-filter"] input[type=checkbox][data-cat]').forEach(b => {
+    b.checked = accionFiltros.has(b.dataset.cat);
   });
   _redibujarCancha();
 }
 
 function setAccionFiltros(allOn) {
   accionFiltros = new Set(allOn ? CATS_ACCION.map(c => c[0]) : []);
-  document.querySelectorAll('#pitch-acciones-filter input[type=checkbox][data-cat]').forEach(b => {
+  document.querySelectorAll('[id="pitch-acciones-filter"] input[type=checkbox][data-cat]').forEach(b => {
     b.checked = allOn;
   });
   _redibujarCancha();
@@ -3122,6 +3399,7 @@ const METRICAS_PIZZA = [
   { k: 'pases_filtrado',    l: 'P. filtrado',                 grupo: 'creacion' },
   { k: 'pct_area',          l: '% Área',         unidad: '%', grupo: 'ataque' },
   { k: 'remates_arco',      l: 'Remates',                     grupo: 'ataque' },
+  { k: 'recup_posic',       l: 'Recup. posic.',               grupo: 'defensa' },
   { k: 'recup_interv',      l: 'Recup. activas',              grupo: 'defensa' },
   { k: 'intercepciones',    l: 'Intercep.',                   grupo: 'defensa' },
 ];
@@ -3367,6 +3645,40 @@ function renderFoda(titulo, foda) {
   </div>`;
 }
 
+function renderRematesPorSuperficie(ind) {
+  const filas = [
+    ['Cabeza',      'rem_cab_'],
+    ['Pie hábil',   'rem_pieh_'],
+    ['Pie inhábil', 'rem_piei_'],
+  ];
+  const totalCualq = filas.reduce((s, [_, p]) => s + (ind[p+'total']||0), 0) + (ind.rem_sd_total||0);
+  if (totalCualq === 0) {
+    return `<div style="font-size:10px;color:var(--gris5);padding:6px 0 2px">Sin tags de superficie en estos remates. Etiquetá <i>Cabeza</i> / <i>Pie Habil</i> / <i>Pie Inhabil</i> en Sportcode para ver el desglose.</div>`;
+  }
+  const colorEf = ef => ef >= 50 ? 'green' : ef >= 30 ? 'amber' : 'red';
+  let html = '<div class="ind-block-title sub">Por superficie</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 28px 28px 32px 38px;gap:4px 8px;font-size:10px;color:var(--gris5);padding:4px 0 2px;text-transform:uppercase;letter-spacing:.4px"><span></span><span style="text-align:right">Arco</span><span style="text-align:right">Gol</span><span style="text-align:right">Total</span><span style="text-align:right">Efect.</span></div>';
+  filas.forEach(([lbl, pre]) => {
+    const tot = ind[pre+'total']||0;
+    const ef  = ind[pre+'efect']||0;
+    const arco = ind[pre+'arco']||0;
+    const gol  = ind[pre+'gol']||0;
+    const afu  = ind[pre+'afuera']||0;
+    const blo  = ind[pre+'bloq']||0;
+    html += `<div style="display:grid;grid-template-columns:1fr 28px 28px 32px 38px;gap:4px 8px;align-items:center;padding:3px 0;border-top:1px dashed var(--gris3)">
+      <span style="font-size:12px" title="Afuera ${afu} · Bloq ${blo}">${lbl}</span>
+      <span class="ind-row-val red"   style="text-align:right">${arco}</span>
+      <span class="ind-row-val amber" style="text-align:right">${gol}</span>
+      <span class="ind-row-val"       style="text-align:right">${tot}</span>
+      <span class="ind-row-val ${colorEf(ef)}" style="text-align:right">${ef}%</span>
+    </div>`;
+  });
+  if ((ind.rem_sd_total||0) > 0) {
+    html += `<div style="font-size:10px;color:var(--gris5);padding:6px 0 0">${ind.rem_sd_total} remate(s) sin tag de superficie.</div>`;
+  }
+  return html;
+}
+
 function buildIndHTML(ind) {
   if (!ind || Object.keys(ind).length === 0) return '<p style="color:var(--gris5)">Sin datos individuales para este jugador.</p>';
 
@@ -3441,7 +3753,7 @@ function buildIndHTML(ind) {
   ${(coordsActuales && coordsActuales.length > 0) ? `
   <div class="pitch-section">
     <div class="pitch-head">
-      <div class="perfil-titulo">🗺 Mapa en cancha · ${coordsActuales.length} acciones</div>
+      <div class="perfil-titulo">🗺 Mapa en cancha · <span id="pitch-count">${_filtrarPorCat(coordsActuales).length}</span> / ${coordsActuales.length} acciones</div>
       <div class="pitch-modos">
         <button class="${pitchModo==='calor'?'active':''}"   onclick="setPitchModo('calor')">🔥 Calor</button>
         <button class="${pitchModo==='puntos'?'active':''}"  onclick="setPitchModo('puntos')">⦿ Puntos</button>
@@ -3478,6 +3790,13 @@ function buildIndHTML(ind) {
     </div>
   </div>` : ''}
 
+  ${ind.__esColectivo ? `
+  <div class="pitch-section" style="margin-top:1.2rem">
+    <div id="mapa-ter-container">
+      <p style="color:var(--gris5);padding:1rem">Cargando posiciones medias…</p>
+    </div>
+  </div>` : ''}
+
   <div class="ind-grid">
     <div class="ind-block">
       <div class="ind-block-title">Pases</div>
@@ -3495,7 +3814,12 @@ function buildIndHTML(ind) {
       <div class="ind-block-title sub">Valor agregado</div>
       ${ir('Filtrados', ind.pases_filtrado)}
       ${ir('Largos completos', ind.pases_largo_c)}
-      ${ir('Centros completos', ind.centros_c, 'green')}
+      ${(() => {
+        const cc = ind.centros_c || 0, ci = ind.centros_i || 0, ct = cc + ci;
+        const efc = ct ? Math.round(cc / ct * 100) : 0;
+        const col = efc >= 35 ? 'green' : efc >= 20 ? 'amber' : ct ? 'red' : '';
+        return `${ir('Centros (compl./tot.)', `${cc}/${ct}`, 'green')}${ir('% Centros completos', efc + '%', col)}`;
+      })()}
     </div>
 
     <div class="ind-block">
@@ -3506,11 +3830,13 @@ function buildIndHTML(ind) {
       ${ir('1v1 Def. Perdidos', ind.dad_minus, 'red')}
       ${ir('Regate completo', ind.regate_c, 'green')}
       ${ir('Regate incompleto', ind.regate_i, 'red')}
-      <div class="ind-block-title sub">Remates</div>
+      <div class="ind-block-title sub">Remates · efectividad ${ind.remates_efect||0}%</div>
+      ${ir('Total', ind.remates_total||0)}
       ${ir('Al arco', ind.remates_arco, 'red')}
       ${ir('Goles', ind.remates_gol, 'amber')}
       ${ir('Afuera', ind.remates_afuera)}
       ${ir('Bloqueado', ind.remates_bloq)}
+      ${renderRematesPorSuperficie(ind)}
     </div>
 
     <div class="ind-block">
