@@ -2155,6 +2155,7 @@ async function renderNotasTagging() {
     'pase_contradictorio':   '↔ Pase contradictorio',
     'centro_contradictorio': '↔ Centro contradictorio',
     'sin_coordenada':        '📍 Sin coordenada (x,y)',
+    '1v1o_sin_destino':      '🎯 1v1O+ sin destino (x_end, y_end)',
   };
 
   // Filtrar por tipo activo
@@ -3202,12 +3203,24 @@ function dibujarCancha(acciones, modo = 'calor') {
              `</g>`;
     });
   } else if (modo === 'flechas') {
-    acciones.filter(a => a.prog && a.xe != null && a.ye != null).forEach(a => {
-      const out = _outcomeAccion(a.tags);
+    acciones.forEach(a => {
+      const tags = a.tags || '';
+      // Pases/centros incompletos y pérdidas: solo punto rojo en el origen, SIN flecha.
+      // Los 4 ejes (si existen) vienen de una acción adyacente (típicamente 1v1O+), no
+      // representan el destino del pase fallido — taggear así sería engañoso.
+      const esFallido = /(^|,)\s*(PIncompletos|CIncompletos|PERDIDAS:)/i.test(tags);
+      if (esFallido) {
+        svg += `<g data-pitch-tip="${escAttr(_tituloAccion(a))}" style="cursor:default">` +
+               `<circle cx="${a.x}" cy="${a.y}" r="3" fill="transparent"/>` +
+               `<circle cx="${a.x}" cy="${a.y}" r="1.1" fill="#CC0000" opacity="0.85"/>` +
+               `</g>`;
+        return;
+      }
+      // Acciones con destino real (PCompletos, CCompletos, 1v1O+): flecha origen → destino,
+      // sólo si son progresivas (avanzaron ≥10m).
+      if (!(a.prog && a.xe != null && a.ye != null)) return;
       const destEnArea = a.xe >= 102 && a.ye >= 18 && a.ye <= 62;
-      const color = out === 'neg' ? '#CC0000'
-                  : destEnArea    ? '#f5a623'
-                  :                 '#3ecf8e';
+      const color = destEnArea ? '#f5a623' : '#3ecf8e';
       svg += `<g data-pitch-tip="${escAttr(_tituloAccion(a))}" style="cursor:default">` +
              `<line x1="${a.x}" y1="${a.y}" x2="${a.xe}" y2="${a.ye}" stroke="${color}" stroke-width="0.6" opacity="0.5"/>` +
              `<line x1="${a.x}" y1="${a.y}" x2="${a.xe}" y2="${a.ye}" stroke="${color}" stroke-width="0.4" opacity="0.9"/>` +
@@ -3928,9 +3941,9 @@ function buildIndHTML(ind) {
         <span><span style="display:inline-block;width:8px;height:8px;background:#f5a623;border-radius:50%;margin-right:5px;vertical-align:middle"></span>En área rival</span>
         <span><span style="display:inline-block;width:8px;height:8px;background:#CC0000;border-radius:50%;margin-right:5px;vertical-align:middle"></span>Incompleta / pérdida</span>
       ` : pitchModo==='flechas' ? `
-        <span><span style="display:inline-block;width:10px;height:3px;background:#3ecf8e;margin-right:5px;vertical-align:middle"></span>Completa / positiva</span>
-        <span><span style="display:inline-block;width:10px;height:3px;background:#f5a623;margin-right:5px;vertical-align:middle"></span>Termina en área rival</span>
-        <span><span style="display:inline-block;width:10px;height:3px;background:#CC0000;margin-right:5px;vertical-align:middle"></span>Incompleta / pérdida</span>
+        <span><span style="display:inline-block;width:10px;height:3px;background:#3ecf8e;margin-right:5px;vertical-align:middle"></span>Flecha verde: pase/centro/1v1O+ progresivo</span>
+        <span><span style="display:inline-block;width:10px;height:3px;background:#f5a623;margin-right:5px;vertical-align:middle"></span>Flecha: termina en área rival</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:#CC0000;border-radius:50%;margin-right:5px;vertical-align:middle"></span>Punto rojo: incompleta / pérdida (origen)</span>
       ` : `
         <span>Color rojo más intenso = más acciones en esa zona · grilla 12 × 8</span>
       `}

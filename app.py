@@ -303,9 +303,8 @@ def notas_tagging():
                 add("centro_contradictorio",
                     "Centro taggeado como Completo e Incompleto a la vez")
 
-            # 4) Acción del jugador sin coordenada (importante para mapa territorial)
+            # 4) Acción del jugador sin coordenada de origen (x_start, y_start)
             if pd.isna(r.get("x_start")) or pd.isna(r.get("y_start")):
-                # Sólo reportar si la acción "merece" coords (no es solo POSITIVO/NEGATIVO)
                 accionables = REMATE_TAGS_NORM | PASE_RES_NORM | CENTRO_RES_NORM | {
                     "perdidas: xpase", "perdidas: xcontrol", "perdidas: xgambeta",
                     "recuperacion xposicional", "recuperacion xintervencion", "tras perdida",
@@ -314,6 +313,15 @@ def notas_tagging():
                 if any(t in tags_norm for t in accionables):
                     add("sin_coordenada",
                         "Acción sin coordenada (x,y) — no aparece en mapas")
+
+            # 5) 1v1 ofensivo ganado debe tener origen Y destino (4 ejes).
+            # El resto de duelos solo necesita origen — esta regla solo aplica a 1v1O+.
+            if "1v1o+" in tags_norm:
+                tiene_inicio = pd.notna(r.get("x_start")) and pd.notna(r.get("y_start"))
+                tiene_fin    = pd.notna(r.get("x_end"))   and pd.notna(r.get("y_end"))
+                if tiene_inicio and not tiene_fin:
+                    add("1v1o_sin_destino",
+                        "1v1 ofensivo ganado sin destino (x_end, y_end) — falta el segundo punto de la jugada")
 
     # Resumen por tipo
     resumen = {}
