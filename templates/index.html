@@ -4117,10 +4117,42 @@ function buildIndHTML(ind) {
   const efect = ind.pases_efect || 0;
   const colorEf = efect >= 75 ? 'var(--verde)' : efect >= 60 ? 'var(--ambar)' : 'var(--rojo)';
 
-  function ir(label, val, color='') {
+  // Semáforo automático por percentil contra el plantel.
+  // Generoso con amarillo: verde solo si destaca (top 30%), rojo solo si está claramente abajo (bottom 20%).
+  // Métricas "menos es mejor" se invierten (perd_total, pases_incompletos, etc.).
+  const METRICAS_INVERTIDAS = new Set([
+    'pases_incompletos', 'centros_i', 'remates_afuera', 'remates_bloq',
+    'dao_minus', 'dad_minus', 'aereo_op', 'aereo_dp', 'regate_i',
+    'perd_total', 'perd_pase', 'perd_control', 'perd_gambeta',
+    'faltas_hec', 'interv_entrada_p', 'interv_anticipo_p',
+    'rem_cab_afuera', 'rem_cab_bloq', 'rem_pieh_afuera', 'rem_pieh_bloq',
+    'rem_piei_afuera', 'rem_piei_bloq', 'negativos',
+  ]);
+  const COLORES_FIJOS = new Set(['', 'red', 'green', 'amber', 'blue']);
+
+  function _semaforoColor(metKey) {
+    if (!datosJugadores || !ind || ind.__esColectivo || !metKey) return '';
+    const pool = Object.values(datosJugadores).filter(j => (j.intervenciones||0) >= 8);
+    if (pool.length < 4) return '';
+    const valores = pool.map(j => j[metKey] || 0);
+    const v = ind[metKey] || 0;
+    let p = _percentil(v, valores);
+    if (METRICAS_INVERTIDAS.has(metKey)) p = 100 - p;
+    // Simétrico: top 30% verde, bottom 30% rojo, 40% medio amarillo
+    if (p >= 70) return 'green';
+    if (p >= 30) return 'amber';
+    return 'red';
+  }
+
+  // ir(label, val, color|metricaKey)
+  //   - Si el 3er arg es 'red'/'green'/'amber'/'blue'/'' → color fijo (compat)
+  //   - Si es una clave de métrica (ej. 'pases_total') → color por percentil
+  function ir(label, val, colorOMet='') {
+    const color = COLORES_FIJOS.has(colorOMet) ? colorOMet : _semaforoColor(colorOMet);
     return `<div class="ind-row"><span class="ind-row-label">${label}</span><span class="ind-row-val ${color}">${val}</span></div>`;
   }
-  function irTip(label, val, tip, color='') {
+  function irTip(label, val, tip, colorOMet='') {
+    const color = COLORES_FIJOS.has(colorOMet) ? colorOMet : _semaforoColor(colorOMet);
     return `<div class="ind-row"><span class="ind-row-label">${label}<span class="info-dot" data-tip="${tip.replace(/"/g,'&quot;')}">i</span></span><span class="ind-row-val ${color}">${val}</span></div>`;
   }
 
@@ -4243,16 +4275,16 @@ function buildIndHTML(ind) {
         <div class="efect-pct" style="color:${colorEf}">${efect}%</div>
         <div class="efect-track"><div class="efect-fill" style="width:${efect}%;background:${colorEf}"></div></div>
       </div>
-      ${ir('Total', ind.pases_total)}
-      ${ir('Completos', ind.pases_completos, 'green')}
-      ${ir('Incompletos', ind.pases_incompletos, 'red')}
+      ${ir('Total', ind.pases_total, 'pases_total')}
+      ${ir('Completos', ind.pases_completos, 'pases_completos')}
+      ${ir('Incompletos', ind.pases_incompletos, 'pases_incompletos')}
       <div class="ind-block-title sub">Dirección</div>
-      ${ir('Adelante', ind.pases_adelante)}
-      ${ir('Atrás', ind.pases_atras)}
-      ${ir('Lateral', ind.pases_lateral)}
+      ${ir('Adelante', ind.pases_adelante, 'pases_adelante')}
+      ${ir('Atrás', ind.pases_atras, 'pases_atras')}
+      ${ir('Lateral', ind.pases_lateral, 'pases_lateral')}
       <div class="ind-block-title sub">Valor agregado</div>
-      ${ir('Filtrados', ind.pases_filtrado)}
-      ${ir('Largos completos', ind.pases_largo_c)}
+      ${ir('Filtrados', ind.pases_filtrado, 'pases_filtrado')}
+      ${ir('Largos completos', ind.pases_largo_c, 'pases_largo_c')}
       ${(() => {
         const cc = ind.centros_c || 0, ci = ind.centros_i || 0, ct = cc + ci;
         const efc = ct ? Math.round(cc / ct * 100) : 0;
@@ -4262,24 +4294,24 @@ function buildIndHTML(ind) {
       ${(() => {
         const ap = ind.asist_pases || 0, ac = ind.asist_centros || 0, at = ind.asistencias || 0;
         const sub = (ap || ac) ? ` <span style="color:var(--gris5);font-weight:500">(${ap} pase · ${ac} centro)</span>` : '';
-        return ir('Asistencias' + sub, at, at ? 'amber' : '');
+        return ir('Asistencias' + sub, at, 'asistencias');
       })()}
     </div>
 
     <div class="ind-block">
       <div class="ind-block-title">Duelos y remates</div>
-      ${ir('1v1 Of. Ganados', ind.dao_plus, 'green')}
-      ${ir('1v1 Of. Perdidos', ind.dao_minus, 'red')}
-      ${ir('1v1 Def. Ganados', ind.dad_plus, 'green')}
-      ${ir('1v1 Def. Perdidos', ind.dad_minus, 'red')}
-      ${ir('Regate completo', ind.regate_c, 'green')}
-      ${ir('Regate incompleto', ind.regate_i, 'red')}
+      ${ir('1v1 Of. Ganados', ind.dao_plus, 'dao_plus')}
+      ${ir('1v1 Of. Perdidos', ind.dao_minus, 'dao_minus')}
+      ${ir('1v1 Def. Ganados', ind.dad_plus, 'dad_plus')}
+      ${ir('1v1 Def. Perdidos', ind.dad_minus, 'dad_minus')}
+      ${ir('Regate completo', ind.regate_c, 'regate_c')}
+      ${ir('Regate incompleto', ind.regate_i, 'regate_i')}
       <div class="ind-block-title sub">Remates · efectividad ${ind.remates_efect||0}%</div>
-      ${ir('Total', ind.remates_total||0)}
-      ${ir('Al arco', ind.remates_arco, 'red')}
-      ${ir('Goles', ind.remates_gol, 'amber')}
-      ${ir('Afuera', ind.remates_afuera)}
-      ${ir('Bloqueado', ind.remates_bloq)}
+      ${ir('Total', ind.remates_total||0, 'remates_total')}
+      ${ir('Al arco', ind.remates_arco, 'remates_arco')}
+      ${ir('Goles', ind.remates_gol, 'remates_gol')}
+      ${ir('Afuera', ind.remates_afuera, 'remates_afuera')}
+      ${ir('Bloqueado', ind.remates_bloq, 'remates_bloq')}
       ${renderRematesPorSuperficie(ind)}
     </div>
 
@@ -4287,30 +4319,46 @@ function buildIndHTML(ind) {
       <div class="ind-block-title">Mapa posicional</div>
       ${irTip('Centro de gravedad', `(${ind.centro_grav_x||0}, ${ind.centro_grav_y||0})`, 'Promedio de coordenadas (x, y) de todas las acciones del jugador. Indica dónde se posicionó habitualmente. x crece hacia el arco rival (0-120). y es el ancho (0-80).')}
       ${irTip('Dispersión x · y', `${ind.dispersion_x||0} · ${ind.dispersion_y||0}`, 'Desvío estándar de las coordenadas. Alto = jugador móvil que cubre mucho terreno. Bajo = jugador anclado a una zona.')}
-      ${irTip('Acciones con coord.', ind.acciones_xy||0, 'Cantidad de acciones del jugador que tienen coordenadas registradas. Es la base de todas las métricas posicionales.')}
-      ${irTip('% último tercio', (ind.pct_ultimo_tercio||0)+'%', 'Porcentaje de las acciones del jugador que ocurrieron en x ≥ 80 (último tercio ofensivo).', (ind.pct_ultimo_tercio||0) > 40 ? 'red' : '')}
-      ${irTip('% área rival', (ind.pct_area||0)+'%', 'Porcentaje de las acciones dentro del área rival (x > 102, y entre 18 y 62).', (ind.pct_area||0) > 5 ? 'amber' : '')}
+      ${irTip('Acciones con coord.', ind.acciones_xy||0, 'Cantidad de acciones del jugador que tienen coordenadas registradas. Es la base de todas las métricas posicionales.', 'acciones_xy')}
+      ${irTip('% último tercio', (ind.pct_ultimo_tercio||0)+'%', 'Porcentaje de las acciones del jugador que ocurrieron en x ≥ 80 (último tercio ofensivo).', 'pct_ultimo_tercio')}
+      ${irTip('% área rival', (ind.pct_area||0)+'%', 'Porcentaje de las acciones dentro del área rival (x > 102, y entre 18 y 62).', 'pct_area')}
       <div class="ind-block-title sub">Progresión</div>
-      ${irTip('Progresión media (mts)', ind.progresion_media||0, 'Promedio de metros que avanza hacia el arco rival en cada acción con origen y destino (x_destino − x_origen). Positivo = avanza, negativo = retrocede.')}
-      ${irTip('Distancia media (mts)', ind.distancia_media||0, 'Promedio de la distancia euclídea entre origen y destino de cada acción. Mide qué tan largas son sus acciones, sin importar dirección.')}
-      ${irTip('% acciones progresivas', (ind.pct_progresivo||0)+'%', 'Porcentaje de las acciones con destino que avanzaron ≥ 10 metros hacia el arco rival. Mide cuánto aporta el jugador al ataque del equipo.', (ind.pct_progresivo||0) > 30 ? 'green' : '')}
+      ${irTip('Progresión media (mts)', ind.progresion_media||0, 'Promedio de metros que avanza hacia el arco rival en cada acción con origen y destino (x_destino − x_origen). Positivo = avanza, negativo = retrocede.', 'progresion_media')}
+      ${irTip('Distancia media (mts)', ind.distancia_media||0, 'Promedio de la distancia euclídea entre origen y destino de cada acción. Mide qué tan largas son sus acciones, sin importar dirección.', 'distancia_media')}
+      ${irTip('% acciones progresivas', (ind.pct_progresivo||0)+'%', 'Porcentaje de las acciones con destino que avanzaron ≥ 10 metros hacia el arco rival. Mide cuánto aporta el jugador al ataque del equipo.', 'pct_progresivo')}
     </div>
 
     <div class="ind-block">
       <div class="ind-block-title">Defensa y táctica</div>
-      ${ir('Recup. posicional', ind.recup_posic, 'green')}
-      ${ir('Recup. x intervención', ind.recup_interv, 'green')}
-      ${ir('Tras pérdida', ind.recup_tras, 'green')}
-      ${ir('Pérdidas totales', ind.perd_total, 'red')}
-      ${ir('Intercepciones', ind.intercepciones)}
-      ${ir('Bloqueos', ind.bloqueos)}
+      ${ir('Recup. posicional', ind.recup_posic, 'recup_posic')}
+      ${ir('Recup. x intervención', ind.recup_interv, 'recup_interv')}
+      ${ir('Tras pérdida', ind.recup_tras, 'recup_tras')}
+      ${ir('Pérdidas totales', ind.perd_total, 'perd_total')}
+      ${ir('Intercepciones', ind.intercepciones, 'intercepciones')}
+      ${ir('Bloqueos', ind.bloqueos, 'bloqueos')}
       <div class="ind-block-title sub">Movimiento</div>
-      ${ir('Toques en área rival', ind.toques_area, 'amber')}
-      ${ir('Recep. entre líneas', ind.recep_lineas)}
-      ${ir('Recep. al espacio', ind.recep_espacio)}
-      ${ir('Ruptura en conducción', ind.ruptura)}
+      ${ir('Toques en área rival', ind.toques_area, 'toques_area')}
+      ${ir('Recep. entre líneas', ind.recep_lineas, 'recep_lineas')}
+      ${ir('Recep. al espacio', ind.recep_espacio, 'recep_espacio')}
+      ${ir('Ruptura en conducción', ind.ruptura, 'ruptura')}
     </div>
   </div>
+
+  ${!ind.__esColectivo ? `
+  <div style="background:var(--gris1);border:1px solid var(--gris3);border-radius:8px;padding:12px 16px;margin-top:1rem;font-size:11.5px;color:var(--gris5);line-height:1.55">
+    <div style="font-weight:700;color:var(--blanco);margin-bottom:6px;font-size:12px">🚦 Cómo se lee el semáforo</div>
+    <div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:6px">
+      <span><span class="ind-row-val green" style="font-weight:800">VERDE</span> · destaca (top 30% del plantel)</span>
+      <span><span class="ind-row-val amber" style="font-weight:800">AMARILLO</span> · cerca del promedio (mayoría del plantel)</span>
+      <span><span class="ind-row-val red" style="font-weight:800">ROJO</span> · por debajo (bottom 30%)</span>
+    </div>
+    <div>
+      Cada valor compara al jugador contra el resto del plantel (jugadores con ≥8 intervenciones). En métricas
+      <i>"menos es mejor"</i> el semáforo se invierte — ej. pocas <b>pérdidas</b>, pocos <b>1v1 perdidos</b> o pocos
+      <b>remates afuera</b> también se ven en verde. % Pase y % Centros completos usan thresholds fijos
+      (75%/60% y 35%/20%) en vez del percentil.
+    </div>
+  </div>` : ''}
 
   ${(() => {
     const esCol = !!ind.__esColectivo;
