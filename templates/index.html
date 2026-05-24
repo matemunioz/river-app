@@ -1086,6 +1086,8 @@ function fdTiempo(fd) {
 async function analizarConFiltro({ mostrarStatus = false } = {}) {
   datosJugadores = null;
   _notasTaggingCache = null; // recalcula notas con la selección nueva de partidos
+  perfilCompararSet = null;  // resetea selección de compañeros con el nuevo set de partidos
+  perfilPosicionForzada = null;
   const idxs = Array.from(partidosSel).sort((a,b) => a-b);
   if (mostrarStatus) {
     document.getElementById('status-bar').style.display = 'flex';
@@ -1738,6 +1740,11 @@ document.addEventListener('click', (e) => {
 
 function renderIndividual(jugador) {
   if (!jugador || !datosActuales) return;
+  // Si cambia el jugador activo, resetear el set de compañeros y la posición forzada
+  if (jugadorActivo !== jugador) {
+    perfilCompararSet = null;
+    perfilPosicionForzada = null;
+  }
   jugadorActivo = jugador;
   mapaTerJugsPorZona = null; // el filtro de zona territorial no aplica a la vista individual
 
@@ -3290,23 +3297,28 @@ let mapaTerZonasActivas = new Set(['def','med','atk']); // filtro por zona; vac�
 let mapaTerJugsPorZona = null; // { def: Set, med: Set, atk: Set } — se recalcula en renderMapaTerritorial
 
 function _calcularLineasEquipo(jugadores, datos) {
-  // Mismo criterio que pdf_gen._calcular_lineas (cuartiles por x)
+  // Clasificación por línea según el centro de gravedad en X.
+  // Usa umbrales relativos al rango del equipo (tercios), no cuartiles fijos —
+  // así si hay 4 defs + 3 meds + 3 atks, los detecta bien (en cuartiles fijos
+  // siempre 3 defs + 2 atks, lo demás "medio").
   const elig = jugadores
     .filter(j => datos[j] && (datos[j].minutos||0) >= mapaTerMinMinutos && (datos[j].acciones_xy||0) > 0)
     .map(j => ({ j, x: datos[j].centro_grav_x || 0, y: datos[j].centro_grav_y || 0 }));
   if (elig.length < 6) {
     return new Map(elig.map(e => [e.j, 'medio']));
   }
-  elig.sort((a, b) => a.x - b.x);
-  const n = elig.length;
-  const nDef = Math.max(3, Math.floor(n / 3));
-  const nAtk = Math.max(2, Math.floor(n / 4));
-  let nMid = n - nDef - nAtk;
-  if (nMid <= 0) nMid = 1;
+  const xs = elig.map(e => e.x);
+  const xMin = Math.min(...xs);
+  const xMax = Math.max(...xs);
+  const rango = Math.max(30, xMax - xMin); // mín 30 unidades para evitar bloque comprimido
+  const umbralDef = xMin + rango * 0.33;
+  const umbralAtk = xMax - rango * 0.33;
   const linea = new Map();
-  elig.slice(0, nDef).forEach(e => linea.set(e.j, 'def'));
-  elig.slice(nDef, nDef + nMid).forEach(e => linea.set(e.j, 'med'));
-  elig.slice(nDef + nMid).forEach(e => linea.set(e.j, 'atk'));
+  elig.forEach(e => {
+    if (e.x < umbralDef)      linea.set(e.j, 'def');
+    else if (e.x > umbralAtk) linea.set(e.j, 'atk');
+    else                       linea.set(e.j, 'med');
+  });
   return linea;
 }
 
@@ -3553,6 +3565,48 @@ const METRICAS_PIZZA = [
   { k: 'intercepciones',    l: 'Intercep.',                   grupo: 'defensa' },
 ];
 
+// Métricas específicas por línea para el gráfico polar de Percentiles por posición.
+// Cada línea tiene su propio set; el percentil se calcula contra el grupo comparable.
+const METRICAS_POR_POSICION = {
+  def: [
+    { k: 'pases_efect',    l: '% Pase',         unidad: '%' },
+    { k: 'pct_progresivo', l: '% Progresivo',   unidad: '%' },
+    { k: 'recup_total',    l: 'Recuperaciones' },
+    { k: 'intercepciones', l: 'Intercep.' },
+    { k: 'aereo_dg',       l: 'Aéreos Def. +' },
+    { k: 'dad_plus',       l: '1v1 Def. +' },
+    { k: 'despeje_or',     l: 'Despejes orient.' },
+    { k: 'bloqueos',       l: 'Bloqueos' },
+  ],
+  med: [
+    { k: 'pases_efect',    l: '% Pase',         unidad: '%' },
+    { k: 'pases_total',    l: 'Pases totales' },
+    { k: 'pases_clave',    l: 'P. clave' },
+    { k: 'pases_filtrado', l: 'P. filtrado' },
+    { k: 'pct_progresivo', l: '% Progresivo',   unidad: '%' },
+    { k: 'recup_total',    l: 'Recuperaciones' },
+    { k: 'dao_plus',       l: '1v1 Of. +' },
+    { k: 'progresion_media', l: 'Prog. media',  unidad: 'm' },
+  ],
+  atk: [
+    { k: 'remates_arco',   l: 'Remates' },
+    { k: 'goles',          l: 'Goles' },
+    { k: 'asistencias',    l: 'Asistencias' },
+    { k: 'pct_area',       l: '% Área',         unidad: '%' },
+    { k: 'toques_area',    l: 'Toques en área' },
+    { k: 'regate_c',       l: 'Regates +' },
+    { k: 'dao_plus',       l: '1v1 Of. +' },
+    { k: 'pases_clave',    l: 'P. clave' },
+  ],
+};
+
+const POSICION_LABEL = { def: 'Defensa', med: 'Mediocampo', atk: 'Ataque' };
+const POSICION_ICON  = { def: '🛡', med: '⚙', atk: '⚔' };
+
+// Estado global del gráfico de Percentiles por posición
+let perfilCompararSet = null; // Set de nombres de jugadores con los que se compara
+let perfilPosicionForzada = null; // si el usuario sobreescribe la posición auto-detectada
+
 // Estilos de juego — cada uno mira un grupo de métricas y le pone nombre al perfil
 // `nombre` = jugador individual · `nombreEq` = grupo colectivo
 const ESTILOS = [
@@ -3738,6 +3792,224 @@ function pizzaPlayer(ind, todos) {
   return svg;
 }
 
+// ─── Percentiles por posición (polar bar moderno, estilo FIFA Career Mode) ──
+function _posicionDeJugador(nombre, datos) {
+  if (perfilPosicionForzada) return perfilPosicionForzada;
+  if (!datos || !datos[nombre]) return 'med';
+  const visibles = Object.keys(datos).filter(j =>
+    (datos[j].minutos||0) >= 20 && (datos[j].acciones_xy||0) > 0);
+  if (visibles.length < 6) return 'med';
+  const lineas = _calcularLineasEquipo(visibles, datos);
+  return lineas.get(nombre) || 'med';
+}
+
+function _comparablesDefault(nombre, datos, posicion) {
+  // Por default: jugadores de la MISMA línea con intervenciones suficientes
+  if (!datos) return new Set();
+  const visibles = Object.keys(datos).filter(j =>
+    (datos[j].minutos||0) >= 20 && (datos[j].acciones_xy||0) > 0);
+  if (visibles.length < 6) {
+    // Equipo chico: comparar con todos
+    return new Set(Object.values(datos).filter(j => (j.intervenciones||0) >= 8).map(j => j.jugador));
+  }
+  const lineas = _calcularLineasEquipo(visibles, datos);
+  return new Set(visibles.filter(j => (lineas.get(j) || 'med') === posicion));
+}
+
+function pizzaPosicional(ind, todos) {
+  if (!todos || !ind || !ind.jugador) return '';
+  // Detectar posición y armar set de comparables si no existe (o si cambió jugador)
+  const posicion = _posicionDeJugador(ind.jugador, todos);
+  if (!perfilCompararSet) {
+    perfilCompararSet = _comparablesDefault(ind.jugador, todos, posicion);
+  }
+  const comparables = Array.from(perfilCompararSet)
+    .filter(n => todos[n] && n !== ind.jugador)
+    .map(n => todos[n]);
+  if (comparables.length < 2) {
+    return `<div style="padding:1rem;color:var(--gris5);text-align:center">
+      Necesitás al menos 2 compañeros para comparar — agregalos en el desplegable de abajo.
+    </div>`;
+  }
+  const metricas = METRICAS_POR_POSICION[posicion] || METRICAS_POR_POSICION.med;
+
+  // viewBox más ancho para que las etiquetas radiales (especialmente las laterales) no se corten
+  const W = 760, H = 680, cx = W/2, cy = H/2, rMin = 70, rMax = 210;
+  const N = metricas.length;
+  const angSlice = 2*Math.PI / N;
+  const GAP = 0.015;
+
+  // Calcular percentiles + valores
+  const slices = metricas.map((m, i) => {
+    const v = ind[m.k] || 0;
+    const arr = comparables.map(j => ({ jugador: j.jugador, v: j[m.k] || 0 }));
+    const max = Math.max(1, v, ...arr.map(a => a.v));
+    const pct = _percentil(v, [...arr.map(a => a.v), v]);
+    const ang = -Math.PI/2 + i * angSlice;
+    const r = rMin + (pct/100) * (rMax - rMin);
+    return { ...m, v, pct, r, ang, max, comp: arr };
+  });
+
+  // Paleta River — rojo
+  const fill = '#5a0a10';   // rojo oscuro relleno
+  const stroke = '#ff5a5a'; // rojo brillante borde + punto + texto
+  const labelBg = '#1a0a0c';
+
+  const arc = (r, a0, a1) => {
+    const x0 = cx + Math.cos(a0)*r, y0 = cy + Math.sin(a0)*r;
+    const x1 = cx + Math.cos(a1)*r, y1 = cy + Math.sin(a1)*r;
+    return `M ${cx},${cy} L ${x0},${y0} A ${r},${r} 0 0 1 ${x1},${y1} Z`;
+  };
+  const escAttr = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:680px;display:block;margin:0 auto;overflow:visible">`;
+  // Anillos guía
+  [0.25, 0.5, 0.75, 1].forEach(s => {
+    const r = rMin + s * (rMax - rMin);
+    svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#2a1518" stroke-width="0.8"/>`;
+  });
+  // Líneas radiales tenues (separadores entre cuñas)
+  slices.forEach(s => {
+    const a = s.ang - angSlice/2;
+    const x = cx + Math.cos(a)*(rMax + 4);
+    const y = cy + Math.sin(a)*(rMax + 4);
+    svg += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#0a0a0a" stroke-width="1"/>`;
+  });
+  // Cuñas (relleno) PRIMERO para que los puntos grises queden por encima
+  slices.forEach(s => {
+    const a0 = s.ang - angSlice/2 + GAP;
+    const a1 = s.ang + angSlice/2 - GAP;
+    svg += `<path d="${arc(s.r, a0, a1)}" fill="${fill}" fill-opacity="0.78" stroke="${stroke}" stroke-width="0.6" stroke-opacity="0.5"/>`;
+  });
+  // Puntos grises de los comparables, TODOS sobre el eje radial central de cada cuña
+  // Tooltip instantáneo con el sistema pitch-tip (no usar <title> SVG nativo: tiene delay)
+  slices.forEach(s => {
+    s.comp.forEach(c => {
+      const pc = s.max ? c.v / s.max : 0;
+      const r = rMin + pc * (rMax - rMin);
+      const x = cx + Math.cos(s.ang)*r;
+      const y = cy + Math.sin(s.ang)*r;
+      const tip = `${c.jugador} — ${s.l}: ${c.v}${s.unidad||''}`;
+      svg += `<g data-pitch-tip="${escAttr(tip)}" style="cursor:pointer">` +
+             `<circle cx="${x}" cy="${y}" r="9" fill="transparent"/>` +     // hit area más grande
+             `<circle cx="${x}" cy="${y}" r="5" fill="#e0e0e0" stroke="#0a0a0a" stroke-width="0.6" stroke-opacity="0.4" opacity="0.5"/>` +
+             `</g>`;
+    });
+  });
+  // Punto brillante al extremo de cada cuña (valor del jugador activo)
+  slices.forEach(s => {
+    const x = cx + Math.cos(s.ang)*s.r;
+    const y = cy + Math.sin(s.ang)*s.r;
+    const tip = `${ind.jugador} — ${s.l}: ${s.v}${s.unidad||''} (percentil ${s.pct})`;
+    svg += `<g data-pitch-tip="${escAttr(tip)}" style="cursor:pointer">` +
+           `<circle cx="${x}" cy="${y}" r="10" fill="transparent"/>` +
+           `<circle cx="${x}" cy="${y}" r="7" fill="${stroke}" stroke="#0a0a0a" stroke-width="0.8"/>` +
+           `</g>`;
+  });
+  // Valor numérico (percentil) al lado del punto extremo
+  slices.forEach(s => {
+    const r = s.r + 18;
+    const x = cx + Math.cos(s.ang)*r;
+    const y = cy + Math.sin(s.ang)*r;
+    svg += `<text x="${x}" y="${y+4}" fill="${stroke}" font-size="14" text-anchor="middle" font-weight="800" stroke="#0a0a0a" stroke-width="0.6" paint-order="stroke">${s.pct}</text>`;
+  });
+  // Labels de métrica alrededor (en cajas oscuras estilo FIFA), con anchor adaptado por cuadrante
+  slices.forEach(s => {
+    const r = rMax + 50;
+    const x = cx + Math.cos(s.ang)*r;
+    const y = cy + Math.sin(s.ang)*r;
+    const lbl = s.l;
+    const w = Math.max(76, lbl.length * 7.2 + 18);
+    // Anclar derecha si está a la izquierda del centro, izquierda si está a la derecha, centrado arriba/abajo
+    let rectX;
+    const dx = Math.cos(s.ang);
+    if (Math.abs(dx) < 0.3) rectX = x - w/2;       // centrado (top/bottom)
+    else if (dx > 0)        rectX = x - 8;          // izquierda alineada (cuña en derecha)
+    else                    rectX = x - w + 8;      // derecha alineada (cuña en izquierda)
+    svg += `<rect x="${rectX}" y="${y - 12}" width="${w}" height="24" rx="12" fill="${labelBg}" stroke="${stroke}" stroke-width="0.9"/>`;
+    let textX, anchor;
+    if (Math.abs(dx) < 0.3) { textX = x; anchor = 'middle'; }
+    else if (dx > 0)        { textX = rectX + 9; anchor = 'start'; }
+    else                    { textX = rectX + w - 9; anchor = 'end'; }
+    svg += `<text x="${textX}" y="${y+4}" fill="${stroke}" font-size="11.5" text-anchor="${anchor}" font-weight="700" letter-spacing="0.3">${escAttr(lbl)}</text>`;
+  });
+  // Halo central
+  svg += `<circle cx="${cx}" cy="${cy}" r="${rMin - 8}" fill="${labelBg}" stroke="${stroke}" stroke-width="1.5"/>`;
+  svg += `<text x="${cx}" y="${cy - 6}" fill="${stroke}" font-size="11" text-anchor="middle" font-weight="700" letter-spacing="1">${POSICION_ICON[posicion]} ${POSICION_LABEL[posicion].toUpperCase()}</text>`;
+  svg += `<text x="${cx}" y="${cy + 12}" fill="#fff" font-size="14" text-anchor="middle" font-weight="800">${escAttr(_apellidoCorto(ind.jugador))}</text>`;
+  svg += `<text x="${cx}" y="${cy + 28}" fill="#888" font-size="9" text-anchor="middle">vs ${comparables.length} comp.</text>`;
+  svg += '</svg>';
+  return svg;
+}
+
+function renderSelectorComparables(ind, todos) {
+  if (!todos || !ind || !ind.jugador) return '';
+  const posicion = _posicionDeJugador(ind.jugador, todos);
+  if (!perfilCompararSet) perfilCompararSet = _comparablesDefault(ind.jugador, todos, posicion);
+
+  const jugs = Object.keys(todos).filter(n => n !== ind.jugador && (todos[n].intervenciones||0) >= 8).sort();
+  const elegidos = perfilCompararSet.size;
+  return `
+    <details style="margin-top:.6rem">
+      <summary style="cursor:pointer;font-size:11px;color:var(--gris5);user-select:none">
+        ⚙ Comparando vs <b style="color:var(--blanco)">${elegidos}</b> compañero${elegidos!==1?'s':''} ·
+        línea detectada: <b style="color:var(--rojo)">${POSICION_ICON[posicion]} ${POSICION_LABEL[posicion]}</b> ·
+        click para editar
+      </summary>
+      <div style="background:var(--gris2);border:1px solid var(--gris3);border-radius:6px;padding:8px;margin-top:6px">
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
+          <span style="font-size:9.5px;color:var(--gris5);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-right:4px">Posición:</span>
+          ${['def','med','atk'].map(p => `
+            <button class="chip-toggle ${posicion===p?'active':''}" style="padding:3px 9px;font-size:10.5px"
+              onclick="setPerfilPosicion('${p}', '${ind.jugador.replace(/'/g,"\\'")}')">
+              ${POSICION_ICON[p]} ${POSICION_LABEL[p]}
+            </button>`).join('')}
+          <span style="margin-left:auto;display:flex;gap:5px">
+            <button class="btn" style="padding:3px 9px;font-size:10.5px" onclick="presetComparables('linea', '${ind.jugador.replace(/'/g,"\\'")}')">⭐ Solo su línea</button>
+            <button class="btn" style="padding:3px 9px;font-size:10.5px" onclick="presetComparables('todos', '${ind.jugador.replace(/'/g,"\\'")}')">👥 Todos</button>
+            <button class="btn" style="padding:3px 9px;font-size:10.5px" onclick="presetComparables('ninguno', '${ind.jugador.replace(/'/g,"\\'")}')">✕</button>
+          </span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <input type="search" placeholder="🔍 Buscar compañero..." oninput="filtrarChipsJug(this.value, 'perfil-comparables-list')"
+                 style="flex:1;max-width:280px;background:var(--gris3);border:1px solid var(--gris4);color:var(--blanco);padding:4px 9px;border-radius:5px;font-size:11.5px">
+        </div>
+        <div id="perfil-comparables-list" style="display:flex;flex-wrap:wrap;gap:5px;max-height:160px;overflow-y:auto">
+          ${jugs.map(j => `
+            <label class="part-chip" data-nombre="${j.toLowerCase()}" style="padding:3px 9px;font-size:10.5px">
+              <input type="checkbox" ${perfilCompararSet.has(j)?'checked':''} onchange="togglePerfilCompare('${j.replace(/'/g,"\\'")}', this.checked)">
+              <span>${j}</span>
+            </label>`).join('')}
+        </div>
+      </div>
+    </details>`;
+}
+
+function togglePerfilCompare(jug, on) {
+  if (!perfilCompararSet) perfilCompararSet = new Set();
+  if (on) perfilCompararSet.add(jug); else perfilCompararSet.delete(jug);
+  if (jugadorActivo) renderIndividual(jugadorActivo);
+}
+
+function setPerfilPosicion(pos, jug) {
+  perfilPosicionForzada = pos;
+  perfilCompararSet = _comparablesDefault(jug, datosJugadores, pos);
+  if (jugadorActivo) renderIndividual(jugadorActivo);
+}
+
+function presetComparables(preset, jug) {
+  if (!datosJugadores) return;
+  if (preset === 'todos') {
+    perfilCompararSet = new Set(Object.keys(datosJugadores).filter(n => n !== jug && (datosJugadores[n].intervenciones||0) >= 8));
+  } else if (preset === 'ninguno') {
+    perfilCompararSet = new Set();
+  } else /* linea */ {
+    const pos = _posicionDeJugador(jug, datosJugadores);
+    perfilCompararSet = _comparablesDefault(jug, datosJugadores, pos);
+  }
+  if (jugadorActivo) renderIndividual(jugadorActivo);
+}
+
 function beeswarmCompacto(ind, todos, seleccionados = null) {
   if (!todos) return '';
   const candidatos = Object.values(todos).filter(j => (j.intervenciones||0) >= 8);
@@ -3884,13 +4156,20 @@ function buildIndHTML(ind) {
         <div class="nombre">${est.nombre}</div>
         <div class="detalle">${est.detalle}</div>
       </div>` : ''}
-      <div class="perfil-titulo">${tituloPiz}</div>
-      ${pizzaPlayer(indPerfil, datosJugadores)}
+      <div class="perfil-titulo">${esColectivo ? tituloPiz : '🎯 Perfil por posición'}</div>
+      ${esColectivo
+        ? pizzaPlayer(indPerfil, datosJugadores)
+        : pizzaPosicional(indPerfil, datosJugadores)}
+      ${esColectivo ? `
       <div class="perfil-leyenda">
         <span class="lg-top">Top (p ≥ 70)</span>
         <span class="lg-medio">Medio (p 40-69)</span>
         <span class="lg-bajo">Bajo (p &lt; 40)</span>
+      </div>` : `
+      <div style="font-size:10px;color:var(--gris5);margin-top:6px;text-align:center">
+        Cuña verde: percentil del jugador vs compañeros · Puntos grises: distribución del grupo
       </div>
+      ${renderSelectorComparables(indPerfil, datosJugadores)}`}
     </div>
     <div>
       <div class="perfil-titulo">${tituloBee}</div>
