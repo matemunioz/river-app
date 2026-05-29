@@ -830,7 +830,7 @@ let radarIndBgTransparente = false;        // si true, el PNG sale con fondo tra
 let radarIndColores = {                    // default: legible sobre fondo blanco (para exportar)
   bg:      '#ffffff',  // fondo
   jugador: '#CC0000',  // relleno + líneas + vértices del jugador
-  numeros: '#CC0000',  // valores numéricos en cada eje
+  numeros: '#1a1a1a',  // valores numéricos en cada eje (gris oscuro, legible sobre claro)
   texto:   '#1a1a1a',  // nombre de la métrica, título y subtítulo
   grilla:  '#d6d6d6',  // grilla y ejes
 };
@@ -2442,13 +2442,13 @@ function _radarPaletaInd() {
 function radarIndPreset(name) {
   if (name === 'blanco') {
     radarIndBgTransparente = false;
-    radarIndColores = { bg:'#ffffff', jugador:'#CC0000', numeros:'#CC0000', texto:'#1a1a1a', grilla:'#d6d6d6' };
+    radarIndColores = { bg:'#ffffff', jugador:'#CC0000', numeros:'#1a1a1a', texto:'#1a1a1a', grilla:'#d6d6d6' };
   } else if (name === 'oscuro') {
     radarIndBgTransparente = false;
     radarIndColores = { bg:'#0a0a0a', jugador:'#ff4d4d', numeros:'#ff4d4d', texto:'#e8e8e8', grilla:'#3a2226' };
   } else if (name === 'transparente') {
     radarIndBgTransparente = true;
-    radarIndColores = { bg:'#ffffff', jugador:'#CC0000', numeros:'#CC0000', texto:'#1a1a1a', grilla:'#d6d6d6' };
+    radarIndColores = { bg:'#ffffff', jugador:'#CC0000', numeros:'#1a1a1a', texto:'#1a1a1a', grilla:'#d6d6d6' };
   }
   renderCreadorContent();
 }
