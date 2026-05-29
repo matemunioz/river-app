@@ -825,8 +825,15 @@ let BAREMOS = null; // cargado de /static/baremos.json
 let radarIndJugador = null; // jugador elegido para el radar individual
 let radarIndMetrics = ['pases_efect', 'pct_progresivo', 'remates_arco', 'recup_total', 'dao_plus', 'intercepciones'];
 let radarIndBase = 'auto'; // 'auto' (por posición) | 'global' | 'def' | 'med' | 'atk'
-let radarIndTema = 'claro';    // 'claro' (fondo blanco, pensado para exportar) | 'oscuro' (pantalla)
-let radarIndColor = '#CC0000'; // color de acento del jugador (River por defecto)
+// Colores personalizables del radar individual (todo el gráfico).
+let radarIndBgTransparente = false;        // si true, el PNG sale con fondo transparente
+let radarIndColores = {                    // default: legible sobre fondo blanco (para exportar)
+  bg:      '#ffffff',  // fondo
+  jugador: '#CC0000',  // relleno + líneas + vértices del jugador
+  numeros: '#CC0000',  // valores numéricos en cada eje
+  texto:   '#1a1a1a',  // nombre de la métrica, título y subtítulo
+  grilla:  '#d6d6d6',  // grilla y ejes
+};
 
 async function cargarBaremos() {
   if (BAREMOS) return BAREMOS;
@@ -2366,18 +2373,24 @@ function renderRadarIndividual() {
         </select>
         <button class="btn btn-red" style="margin-left:auto" onclick="exportarRadarPNG()">⬇ Exportar PNG</button>
       </div>
-      <div class="chart-builder-row">
+      <div class="chart-builder-row" style="align-items:center;flex-wrap:wrap">
         <div class="chart-builder-label">🎨 Colores</div>
-        <select style="${baseStyle}" onchange="radarIndTema=this.value;renderCreadorContent()" title="Cómo se ve y se exporta el radar">
-          <option value="claro" ${radarIndTema==='claro'?'selected':''}>Fondo blanco (para exportar)</option>
-          <option value="oscuro" ${radarIndTema==='oscuro'?'selected':''}>Fondo oscuro / transparente</option>
+        <select style="${baseStyle}" onchange="radarIndPreset(this.value)" title="Combinaciones rápidas">
+          <option value="">Presets…</option>
+          <option value="blanco">Fondo blanco (para exportar)</option>
+          <option value="oscuro">Fondo oscuro (pantalla)</option>
+          <option value="transparente">Fondo transparente</option>
         </select>
-        <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--gris5)">
-          Color del jugador
-          <input type="color" value="${radarIndColor}" onchange="radarIndColor=this.value;renderCreadorContent()"
-                 style="width:34px;height:26px;padding:0;border:1px solid var(--gris4);border-radius:6px;background:none;cursor:pointer">
+        ${_radarColorPicker('Fondo', 'bg')}
+        ${_radarColorPicker('Jugador', 'jugador')}
+        ${_radarColorPicker('Números', 'numeros')}
+        ${_radarColorPicker('Texto', 'texto')}
+        ${_radarColorPicker('Grilla', 'grilla')}
+        <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--gris5)">
+          <input type="checkbox" ${radarIndBgTransparente?'checked':''} onchange="radarIndBgTransparente=this.checked;renderCreadorContent()">
+          Fondo transparente
         </label>
-        <span style="font-size:10px;color:var(--gris5)">La vista previa de abajo es exactamente lo que se exporta en el PNG.</span>
+        <span style="flex-basis:100%;font-size:10px;color:var(--gris5);margin-top:2px">La vista previa de abajo es exactamente lo que se exporta en el PNG.</span>
       </div>
       <div class="chart-builder-row" style="align-items:flex-start">
         <div class="chart-builder-label" style="padding-top:6px"><span class="step-num">3</span> Métricas <span style="font-size:9px;color:var(--gris5)">(${radarIndMetrics.length})</span></div>
@@ -2406,18 +2419,56 @@ function _baremoLinea() {
   return (BAREMOS[pos] && Object.keys(BAREMOS[pos]).length) ? pos : 'global';
 }
 
-// Paleta del radar individual según el tema elegido en el dashboard.
-// "claro": pensado para exportar el PNG y pegarlo en fondo blanco (texto oscuro legible).
-// "oscuro": look de pantalla con fondo transparente.
+// Paleta del radar individual a partir de los colores personalizados del dashboard.
 function _radarPaletaInd() {
-  const accent = radarIndColor || '#CC0000';
-  if (radarIndTema === 'oscuro') {
-    return { bg:'transparent', grid:'#3a2226', label:'#e8e8e8', titulo:'#ffffff',
-             sub:'#888888', fill:accent, fillOp:0.32, stroke:accent, num:accent, vert:'#0a0a0a' };
+  const c = radarIndColores;
+  const bg = radarIndBgTransparente ? 'transparent' : c.bg;
+  return {
+    bg,
+    grid:   c.grilla,
+    label:  c.texto,
+    titulo: c.texto,
+    sub:    c.texto,
+    fill:   c.jugador, fillOp: 0.22,
+    stroke: c.jugador,
+    num:    c.numeros,
+    // El contorno de cada vértice usa el color de fondo para que "respire" sobre el relleno;
+    // con fondo transparente caemos a un oscuro neutro.
+    vert:   radarIndBgTransparente ? '#0a0a0a' : c.bg,
+  };
+}
+
+// Presets rápidos que rellenan los colores personalizados.
+function radarIndPreset(name) {
+  if (name === 'blanco') {
+    radarIndBgTransparente = false;
+    radarIndColores = { bg:'#ffffff', jugador:'#CC0000', numeros:'#CC0000', texto:'#1a1a1a', grilla:'#d6d6d6' };
+  } else if (name === 'oscuro') {
+    radarIndBgTransparente = false;
+    radarIndColores = { bg:'#0a0a0a', jugador:'#ff4d4d', numeros:'#ff4d4d', texto:'#e8e8e8', grilla:'#3a2226' };
+  } else if (name === 'transparente') {
+    radarIndBgTransparente = true;
+    radarIndColores = { bg:'#ffffff', jugador:'#CC0000', numeros:'#CC0000', texto:'#1a1a1a', grilla:'#d6d6d6' };
   }
-  // claro (default) — todo legible sobre blanco
-  return { bg:'#ffffff', grid:'#d6d6d6', label:'#1a1a1a', titulo:'#111111',
-           sub:'#666666', fill:accent, fillOp:0.22, stroke:accent, num:accent, vert:'#ffffff' };
+  renderCreadorContent();
+}
+
+// Cambia un color suelto del radar y refresca.
+function setRadarIndColor(clave, valor) {
+  radarIndColores[clave] = valor;
+  renderCreadorContent();
+}
+
+// Devuelve el HTML de un selector de color para una clave de radarIndColores.
+function _radarColorPicker(etiqueta, clave) {
+  const dim = (clave === 'bg' && radarIndBgTransparente) ? 'opacity:.4' : '';
+  const disabled = (clave === 'bg' && radarIndBgTransparente) ? 'disabled' : '';
+  return `<label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--gris5);${dim}">
+    ${etiqueta}
+    <input type="color" value="${radarIndColores[clave]}" ${disabled}
+           onchange="setRadarIndColor('${clave}', this.value)"
+           style="width:30px;height:24px;padding:0;border:1px solid var(--gris4);border-radius:6px;background:none;cursor:pointer">
+  </label>`;
 }
 
 function dibujarRadarIndividual() {
