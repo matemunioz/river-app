@@ -825,6 +825,15 @@ let BAREMOS = null; // cargado de /static/baremos.json
 let radarIndJugador = null; // jugador elegido para el radar individual
 let radarIndMetrics = ['pases_efect', 'pct_progresivo', 'remates_arco', 'recup_total', 'dao_plus', 'intercepciones'];
 let radarIndBase = 'auto'; // 'auto' (por posición) | 'global' | 'def' | 'med' | 'atk'
+// Colores personalizables del radar individual (todo el gráfico).
+let radarIndBgTransparente = false;        // si true, el PNG sale con fondo transparente
+let radarIndColores = {                    // default: legible sobre fondo blanco (para exportar)
+  bg:      '#ffffff',  // fondo
+  jugador: '#CC0000',  // relleno + líneas + vértices del jugador
+  numeros: '#1a1a1a',  // valores numéricos en cada eje (gris oscuro, legible sobre claro)
+  texto:   '#1a1a1a',  // nombre de la métrica, título y subtítulo
+  grilla:  '#d6d6d6',  // grilla y ejes
+};
 
 async function cargarBaremos() {
   if (BAREMOS) return BAREMOS;
@@ -2362,7 +2371,26 @@ function renderRadarIndividual() {
           <option value="med" ${radarIndBase==='med'?'selected':''}>vs Mediocampistas</option>
           <option value="atk" ${radarIndBase==='atk'?'selected':''}>vs Delanteros</option>
         </select>
-        <button class="btn btn-red" style="margin-left:auto" onclick="exportarRadarPNG()">⬇ Exportar PNG (transparente)</button>
+        <button class="btn btn-red" style="margin-left:auto" onclick="exportarRadarPNG()">⬇ Exportar PNG</button>
+      </div>
+      <div class="chart-builder-row" style="align-items:center;flex-wrap:wrap">
+        <div class="chart-builder-label">🎨 Colores</div>
+        <select style="${baseStyle}" onchange="radarIndPreset(this.value)" title="Combinaciones rápidas">
+          <option value="">Presets…</option>
+          <option value="blanco">Fondo blanco (para exportar)</option>
+          <option value="oscuro">Fondo oscuro (pantalla)</option>
+          <option value="transparente">Fondo transparente</option>
+        </select>
+        ${_radarColorPicker('Fondo', 'bg')}
+        ${_radarColorPicker('Jugador', 'jugador')}
+        ${_radarColorPicker('Números', 'numeros')}
+        ${_radarColorPicker('Texto', 'texto')}
+        ${_radarColorPicker('Grilla', 'grilla')}
+        <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--gris5)">
+          <input type="checkbox" ${radarIndBgTransparente?'checked':''} onchange="radarIndBgTransparente=this.checked;renderCreadorContent()">
+          Fondo transparente
+        </label>
+        <span style="flex-basis:100%;font-size:10px;color:var(--gris5);margin-top:2px">La vista previa de abajo es exactamente lo que se exporta en el PNG.</span>
       </div>
       <div class="chart-builder-row" style="align-items:flex-start">
         <div class="chart-builder-label" style="padding-top:6px"><span class="step-num">3</span> Métricas <span style="font-size:9px;color:var(--gris5)">(${radarIndMetrics.length})</span></div>
@@ -2391,6 +2419,58 @@ function _baremoLinea() {
   return (BAREMOS[pos] && Object.keys(BAREMOS[pos]).length) ? pos : 'global';
 }
 
+// Paleta del radar individual a partir de los colores personalizados del dashboard.
+function _radarPaletaInd() {
+  const c = radarIndColores;
+  const bg = radarIndBgTransparente ? 'transparent' : c.bg;
+  return {
+    bg,
+    grid:   c.grilla,
+    label:  c.texto,
+    titulo: c.texto,
+    sub:    c.texto,
+    fill:   c.jugador, fillOp: 0.22,
+    stroke: c.jugador,
+    num:    c.numeros,
+    // El contorno de cada vértice usa el color de fondo para que "respire" sobre el relleno;
+    // con fondo transparente caemos a un oscuro neutro.
+    vert:   radarIndBgTransparente ? '#0a0a0a' : c.bg,
+  };
+}
+
+// Presets rápidos que rellenan los colores personalizados.
+function radarIndPreset(name) {
+  if (name === 'blanco') {
+    radarIndBgTransparente = false;
+    radarIndColores = { bg:'#ffffff', jugador:'#CC0000', numeros:'#1a1a1a', texto:'#1a1a1a', grilla:'#d6d6d6' };
+  } else if (name === 'oscuro') {
+    radarIndBgTransparente = false;
+    radarIndColores = { bg:'#0a0a0a', jugador:'#ff4d4d', numeros:'#ff4d4d', texto:'#e8e8e8', grilla:'#3a2226' };
+  } else if (name === 'transparente') {
+    radarIndBgTransparente = true;
+    radarIndColores = { bg:'#ffffff', jugador:'#CC0000', numeros:'#1a1a1a', texto:'#1a1a1a', grilla:'#d6d6d6' };
+  }
+  renderCreadorContent();
+}
+
+// Cambia un color suelto del radar y refresca.
+function setRadarIndColor(clave, valor) {
+  radarIndColores[clave] = valor;
+  renderCreadorContent();
+}
+
+// Devuelve el HTML de un selector de color para una clave de radarIndColores.
+function _radarColorPicker(etiqueta, clave) {
+  const dim = (clave === 'bg' && radarIndBgTransparente) ? 'opacity:.4' : '';
+  const disabled = (clave === 'bg' && radarIndBgTransparente) ? 'disabled' : '';
+  return `<label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--gris5);${dim}">
+    ${etiqueta}
+    <input type="color" value="${radarIndColores[clave]}" ${disabled}
+           onchange="setRadarIndColor('${clave}', this.value)"
+           style="width:30px;height:24px;padding:0;border:1px solid var(--gris4);border-radius:6px;background:none;cursor:pointer">
+  </label>`;
+}
+
 function dibujarRadarIndividual() {
   if (!radarIndJugador || !datosJugadores || !datosJugadores[radarIndJugador]) {
     return '<p style="color:var(--gris5);padding:2rem;text-align:center">Elegí un jugador.</p>';
@@ -2406,7 +2486,8 @@ function dibujarRadarIndividual() {
   const W = 620, H = 620, cx = W/2, cy = H/2, R = 200, rMin = 0;
   const metrics = radarIndMetrics;
   const n = metrics.length;
-  const fill = '#CC0000', stroke = '#ff4d4d';
+  const P = _radarPaletaInd();
+  const fill = P.fill, stroke = P.stroke;
 
   const pt = (i, scale) => {
     const a = -Math.PI/2 + i*(2*Math.PI/n);
@@ -2427,23 +2508,25 @@ function dibujarRadarIndividual() {
   });
 
   let svg = `<svg id="radar-ind-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:560px;display:block;margin:0 auto;overflow:visible">`;
+  // Fondo (se incluye en el PNG exportado salvo que el tema sea transparente)
+  if (P.bg !== 'transparent') svg += `<rect x="0" y="0" width="${W}" height="${H}" fill="${P.bg}"/>`;
   // Grid concéntrico
   [0.25, 0.5, 0.75, 1].forEach(s => {
     const pts = metrics.map((_,i) => pt(i, s).join(',')).join(' ');
-    svg += `<polygon points="${pts}" fill="none" stroke="#3a2226" stroke-width="1"/>`;
+    svg += `<polygon points="${pts}" fill="none" stroke="${P.grid}" stroke-width="1"/>`;
   });
   // Ejes radiales
   metrics.forEach((_, i) => {
     const [x,y] = pt(i, 1);
-    svg += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#3a2226" stroke-width="1"/>`;
+    svg += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="${P.grid}" stroke-width="1"/>`;
   });
   // Polígono del jugador
   const polyPts = datos.map(d => pt(d.i, d.scale).join(',')).join(' ');
-  svg += `<polygon points="${polyPts}" fill="${fill}" fill-opacity="0.32" stroke="${stroke}" stroke-width="2.5" stroke-linejoin="round"/>`;
+  svg += `<polygon points="${polyPts}" fill="${fill}" fill-opacity="${P.fillOp}" stroke="${stroke}" stroke-width="2.5" stroke-linejoin="round"/>`;
   // Vértices con valor
   datos.forEach(d => {
     const [x,y] = pt(d.i, d.scale);
-    svg += `<circle cx="${x}" cy="${y}" r="4.5" fill="${stroke}" stroke="#0a0a0a" stroke-width="1"/>`;
+    svg += `<circle cx="${x}" cy="${y}" r="4.5" fill="${stroke}" stroke="${P.vert}" stroke-width="1"/>`;
   });
   // Etiquetas alrededor: nombre métrica + valor real
   datos.forEach(d => {
@@ -2452,12 +2535,12 @@ function dibujarRadarIndividual() {
     const ex = cx + Math.cos(a)*(R + 26);
     const ey = cy + Math.sin(a)*(R + 26);
     const anchor = Math.abs(Math.cos(a)) < 0.3 ? 'middle' : (Math.cos(a) > 0 ? 'start' : 'end');
-    svg += `<text x="${ex}" y="${ey-3}" fill="#e8e8e8" font-size="13" font-weight="700" text-anchor="${anchor}">${labelOf(d.k)}</text>`;
-    svg += `<text x="${ex}" y="${ey+13}" fill="${stroke}" font-size="13" font-weight="800" text-anchor="${anchor}">${d.v}</text>`;
+    svg += `<text x="${ex}" y="${ey-3}" fill="${P.label}" font-size="13" font-weight="700" text-anchor="${anchor}">${labelOf(d.k)}</text>`;
+    svg += `<text x="${ex}" y="${ey+13}" fill="${P.num}" font-size="13" font-weight="800" text-anchor="${anchor}">${d.v}</text>`;
   });
   // Título central
-  svg += `<text x="${cx}" y="${cy-4}" fill="#fff" font-size="17" font-weight="800" text-anchor="middle">${_apellidoCorto(radarIndJugador)}</text>`;
-  svg += `<text x="${cx}" y="${cy+15}" fill="#888" font-size="10" text-anchor="middle">${ind.minutos||0}min · ${ind.intervenciones||0} interv.</text>`;
+  svg += `<text x="${cx}" y="${cy-4}" fill="${P.titulo}" font-size="17" font-weight="800" text-anchor="middle">${_apellidoCorto(radarIndJugador)}</text>`;
+  svg += `<text x="${cx}" y="${cy+15}" fill="${P.sub}" font-size="10" text-anchor="middle">${ind.minutos||0}min · ${ind.intervenciones||0} interv.</text>`;
   svg += '</svg>';
 
   return `
@@ -2479,7 +2562,9 @@ function exportarRadarPNG() {
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, W, H); // fondo transparente
+    ctx.clearRect(0, 0, W, H);
+    const P = _radarPaletaInd();
+    if (P.bg !== 'transparent') { ctx.fillStyle = P.bg; ctx.fillRect(0, 0, W, H); } // fondo sólido para que se vea al pegarlo
     ctx.drawImage(img, 0, 0, W, H);
     canvas.toBlob(blob => {
       const a = document.createElement('a');
