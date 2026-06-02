@@ -875,6 +875,7 @@ const METRICAS = [
   ['toques_area', 'Toques en área rival'],
   ['recep_lineas', 'Recep. entre líneas'],
   ['recep_espacio', 'Recep. al espacio'],
+  ['recep_espal', 'Recep. a espaldas del volante'],
   ['ruptura', 'Rupturas en conducción'],
   ['despeje_or', 'Despejes orientados'],
   ['faltas_rec', 'Faltas recibidas'],
@@ -2483,7 +2484,9 @@ function dibujarRadarIndividual() {
   const baremo = (BAREMOS && BAREMOS[baseKey]) || {};
   const baseLabel = { global: 'histórico global', def: 'vs defensores', med: 'vs mediocampistas', atk: 'vs delanteros' }[baseKey] || baseKey;
 
-  const W = 620, H = 620, cx = W/2, cy = H/2, R = 200, rMin = 0;
+  // viewBox amplio (820x820) para que labels largas no se recorten al exportar a PNG.
+  // El radar en sí ocupa R=200, las etiquetas van a R+36 ≈ 236, sobra margen.
+  const W = 820, H = 820, cx = W/2, cy = H/2, R = 200, rMin = 0;
   const metrics = radarIndMetrics;
   const n = metrics.length;
   const P = _radarPaletaInd();
@@ -2530,13 +2533,12 @@ function dibujarRadarIndividual() {
   });
   // Etiquetas alrededor: nombre métrica + valor real
   datos.forEach(d => {
-    const [lx, ly] = pt(d.i, 1.0);
     const a = -Math.PI/2 + d.i*(2*Math.PI/n);
-    const ex = cx + Math.cos(a)*(R + 26);
-    const ey = cy + Math.sin(a)*(R + 26);
+    const ex = cx + Math.cos(a)*(R + 36);
+    const ey = cy + Math.sin(a)*(R + 36);
     const anchor = Math.abs(Math.cos(a)) < 0.3 ? 'middle' : (Math.cos(a) > 0 ? 'start' : 'end');
-    svg += `<text x="${ex}" y="${ey-3}" fill="${P.label}" font-size="13" font-weight="700" text-anchor="${anchor}">${labelOf(d.k)}</text>`;
-    svg += `<text x="${ex}" y="${ey+13}" fill="${P.num}" font-size="13" font-weight="800" text-anchor="${anchor}">${d.v}</text>`;
+    svg += `<text x="${ex}" y="${ey-3}" fill="${P.label}" font-size="14" font-weight="700" text-anchor="${anchor}">${labelOf(d.k)}</text>`;
+    svg += `<text x="${ex}" y="${ey+15}" fill="${P.num}" font-size="14" font-weight="800" text-anchor="${anchor}">${d.v}</text>`;
   });
   // Título central
   svg += `<text x="${cx}" y="${cy-4}" fill="${P.titulo}" font-size="17" font-weight="800" text-anchor="middle">${_apellidoCorto(radarIndJugador)}</text>`;
@@ -2554,7 +2556,7 @@ function dibujarRadarIndividual() {
 function exportarRadarPNG() {
   const svgEl = document.getElementById('radar-ind-svg');
   if (!svgEl) { alert('No hay radar para exportar'); return; }
-  const W = 1240, H = 1240; // 2x para buena resolución
+  const W = 1640, H = 1640; // 2x del viewBox (820x820) para alta resolución
   const xml = new XMLSerializer().serializeToString(svgEl);
   const svg64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(xml)));
   const img = new Image();
