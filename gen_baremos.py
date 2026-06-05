@@ -98,11 +98,58 @@ def main():
                 out[m] = p
         return out
 
+    # Division por jugador-partido: para cada registro, guardamos también la división
+    # del partido. Usamos la columna 'División' del histórico (cuarta, quinta, ..., novena).
+    # Re-mapeamos: ya viene capturada arriba a través de partido_de(); ahora la sacamos del df.
+    # Para simplicidad: cada registro ya tiene la división porque el partido del histórico
+    # tiene una única división (todos los jugadores de un partido son de la misma).
+    # La asignamos en el loop principal — adaptamos abajo.
+
+    # Re-procesar agregando división por registro (necesitamos el df por partido)
+    registros_por_division = {d: [] for d in ["cuarta", "quinta", "sexta", "séptima", "octava", "novena"]}
+    # Cargamos de nuevo el mapeo timeline → división
+    div_por_timeline = (
+        raw.dropna(subset=["Timeline", "División"])
+        .groupby("Timeline")["División"]
+        .agg(lambda s: s.astype(str).str.strip().mode().iloc[0])
+        .to_dict()
+    )
+    # Re-correr el loop con tracking de división — eficiencia importa menos que claridad
+    for timeline, sub in raw.groupby("Timeline"):
+        divis = div_por_timeline.get(timeline, "")
+        if divis not in registros_por_division:
+            continue
+        df = sub.copy()
+        df["Row"] = df["Jugador"]
+        df = sc.enriquecer_df(df)
+        for jug in [j for j in df["Row"].dropna().unique() if isinstance(j, str)]:
+            st = sc.estadisticas_individuales(df, jug)
+            if not st or (st.get("intervenciones", 0) < MIN_INTERV):
+                continue
+            pos = str(pos_por_jug.get(jug, "")).strip()
+            st["__linea"] = POS_A_LINEA.get(pos, None)
+            registros_por_division[divis].append(st)
+
+    def por_linea(regs):
+        return {
+            "global": baremo_de(regs),
+            "def": baremo_de([r for r in regs if r["__linea"] == "def"]),
+            "med": baremo_de([r for r in regs if r["__linea"] == "med"]),
+            "atk": baremo_de([r for r in regs if r["__linea"] == "atk"]),
+        }
+
     baremos = {
+        # Histórico global (todas las divisiones mezcladas) — fallback de último recurso
         "global": baremo_de(registros),
         "def": baremo_de([r for r in registros if r["__linea"] == "def"]),
         "med": baremo_de([r for r in registros if r["__linea"] == "med"]),
         "atk": baremo_de([r for r in registros if r["__linea"] == "atk"]),
+        # Baremos por división — más justo porque compara contra jugadores de la misma categoría
+        "divisiones": {
+            divis: por_linea(regs)
+            for divis, regs in registros_por_division.items()
+            if regs  # solo incluir divisiones con datos
+        },
         "_meta": {
             "fuente": "todos_los_partidos-2.csv (6 divisiones formativas)",
             "jugador_partidos": len(registros),
@@ -113,6 +160,7 @@ def main():
                 "atk": sum(1 for r in registros if r["__linea"] == "atk"),
                 "sin_pos": sum(1 for r in registros if r["__linea"] is None),
             },
+            "conteo_por_division": {d: len(rs) for d, rs in registros_por_division.items() if rs},
         },
     }
 

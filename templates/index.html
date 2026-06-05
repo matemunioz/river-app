@@ -2363,9 +2363,9 @@ function renderRadarIndividual() {
     <div class="chart-builder">
       <div class="chart-builder-row">
         <div class="chart-builder-label"><span class="step-num">2</span> Jugador</div>
-        <select style="${selStyle};min-width:200px" onchange="radarIndJugador=this.value;renderCreadorContent()">${opts}</select>
+        <select style="${selStyle};min-width:200px" onchange="radarIndJugador=this.value;_sincronizarSeleccionConBaremoRadar();renderCreadorContent()">${opts}</select>
         <span style="font-size:10px;color:var(--gris5);margin-left:6px">Escala:</span>
-        <select style="${baseStyle}" onchange="radarIndBase=this.value;renderCreadorContent()">
+        <select style="${baseStyle}" onchange="radarIndBase=this.value;_sincronizarSeleccionConBaremoRadar();renderCreadorContent()">
           <option value="auto" ${radarIndBase==='auto'?'selected':''}>Auto (por posición)</option>
           <option value="global" ${radarIndBase==='global'?'selected':''}>Histórico global</option>
           <option value="def" ${radarIndBase==='def'?'selected':''}>vs Defensores</option>
@@ -2418,6 +2418,119 @@ function _baremoLinea() {
   // Auto: detectar la línea del jugador por su centro de gravedad
   const pos = _posicionDeJugador(radarIndJugador, datosJugadores);
   return (BAREMOS[pos] && Object.keys(BAREMOS[pos]).length) ? pos : 'global';
+}
+
+// Detecta la división de un partido a partir del nombre del archivo.
+// Devuelve 'cuarta', 'quinta', 'sexta', 'séptima', 'octava', 'novena', o null si no detecta.
+function _detectarDivision(nombreArch) {
+  if (!nombreArch) return null;
+  const s = nombreArch.toLowerCase();
+  if (/(\b|_|^)4ta(\b|_|\s|\.|$)|cuarta/.test(s)) return 'cuarta';
+  if (/(\b|_|^)5ta(\b|_|\s|\.|$)|quinta/.test(s)) return 'quinta';
+  if (/(\b|_|^)6ta(\b|_|\s|\.|$)|sexta/.test(s))  return 'sexta';
+  if (/(\b|_|^)7ma(\b|_|\s|\.|$)|septima|séptima/.test(s)) return 'séptima';
+  if (/(\b|_|^)8va(\b|_|\s|\.|$)|octava/.test(s)) return 'octava';
+  if (/(\b|_|^)9na(\b|_|\s|\.|$)|novena/.test(s)) return 'novena';
+  return null;
+}
+
+// Detecta la división de los partidos actualmente seleccionados.
+// Si todos son de la misma → devuelve esa. Si hay mezcla o no se detecta → null.
+function _divisionDePartidosActuales() {
+  const idxs = Array.from(partidosSel).sort();
+  const divs = new Set();
+  idxs.forEach(i => {
+    const d = _detectarDivision(archivosActuales[i]?.name);
+    if (d) divs.add(d);
+  });
+  if (divs.size !== 1) return null;
+  return Array.from(divs)[0];
+}
+
+// Devuelve los nombres de los jugadores del PARTIDO ACTUAL que pertenecen
+// a la misma posición que está usando el radar (def/med/atk).
+// Si la escala es "global" (no por posición), devuelve TODOS los jugadores.
+function _jugadoresDelGrupoActivo() {
+  if (!datosJugadores) return [];
+  // Posición efectiva: si está en "auto", usa la del jugador activo; si está forzada, usa la elegida.
+  let pos;
+  if (radarIndBase === 'auto') {
+    pos = _posicionDeJugador(radarIndJugador, datosJugadores);
+  } else if (radarIndBase === 'global') {
+    // Sin filtro de posición → todos los jugadores
+    return Object.keys(datosJugadores);
+  } else {
+    pos = radarIndBase;
+  }
+  // Calcular líneas del plantel actual y filtrar por la posición
+  const visibles = Object.keys(datosJugadores).filter(j =>
+    (datosJugadores[j].minutos||0) >= 20 && (datosJugadores[j].acciones_xy||0) > 0);
+  if (visibles.length < 6) {
+    // Plantel muy chico → no separar por línea, devolver todos
+    return Object.keys(datosJugadores);
+  }
+  const lineas = _calcularLineasEquipo(visibles, datosJugadores);
+  return Object.keys(datosJugadores).filter(j => (lineas.get(j) || 'med') === pos);
+}
+
+// Sincroniza los chips de jugadores de arriba con el grupo de comparación del radar.
+// Tilda solo los jugadores que matchean el baremo activo (división + posición).
+// El usuario después puede destildar/tildar manualmente.
+function _sincronizarSeleccionConBaremoRadar() {
+  if (chartType !== 'radar_ind' || tabActiva !== 'creador') return;
+  const delGrupo = _jugadoresDelGrupoActivo();
+  jugadoresSel = new Set(delGrupo);
+  // Refrescar visualmente los chips
+  document.querySelectorAll('[data-jug]').forEach(b => {
+    b.checked = jugadoresSel.has(b.dataset.jug);
+  });
+}
+
+// Selección de baremo con fallback escalonado:
+//   1. División + Posición específica  (más justo, requiere ≥30 jugador-partidos)
+//   2. División + global de esa categoría
+//   3. Posición global (todas las divisiones mezcladas)
+//   4. Global total
+// Devuelve {key, baremo, label, n, niveles[]} donde niveles describe los fallbacks usados.
+const MIN_N_BAREMO = 30;
+function _baremoActivo() {
+  if (!BAREMOS) return { key: 'global', baremo: {}, label: 'sin baremos cargados', n: 0, fallback: false };
+  const division = _divisionDePartidosActuales();
+  const pos = radarIndBase === 'auto'
+    ? _posicionDeJugador(radarIndJugador, datosJugadores)
+    : (radarIndBase === 'global' ? null : radarIndBase);
+  const _n = (b) => {
+    const k = Object.keys(b || {})[0];
+    return k ? (b[k]?.n || 0) : 0;
+  };
+  // Nivel 1: división + posición
+  if (division && pos && BAREMOS.divisiones?.[division]?.[pos]) {
+    const b = BAREMOS.divisiones[division][pos];
+    if (_n(b) >= MIN_N_BAREMO) {
+      return { key: `${division}_${pos}`, baremo: b,
+        label: `${POSICION_LABEL[pos]} de ${division}`, n: _n(b), fallback: false };
+    }
+  }
+  // Nivel 2: división completa (sin separar posición)
+  if (division && BAREMOS.divisiones?.[division]?.global) {
+    const b = BAREMOS.divisiones[division].global;
+    if (_n(b) >= MIN_N_BAREMO) {
+      return { key: `${division}_global`, baremo: b,
+        label: `todas las posiciones de ${division}`, n: _n(b), fallback: true,
+        motivo: 'pocos datos para esa posición en esta división' };
+    }
+  }
+  // Nivel 3: posición todas las divisiones
+  if (pos && BAREMOS[pos] && _n(BAREMOS[pos]) >= MIN_N_BAREMO) {
+    return { key: pos, baremo: BAREMOS[pos],
+      label: `${POSICION_LABEL[pos]} (todas las divisiones)`, n: _n(BAREMOS[pos]), fallback: true,
+      motivo: 'la división no se detectó o tiene pocos datos' };
+  }
+  // Nivel 4: global
+  const g = BAREMOS.global || {};
+  return { key: 'global', baremo: g,
+    label: 'histórico completo (todas las divisiones mezcladas)', n: _n(g), fallback: true,
+    motivo: 'no se detectó división ni posición' };
 }
 
 // Paleta del radar individual a partir de los colores personalizados del dashboard.
@@ -2480,9 +2593,12 @@ function dibujarRadarIndividual() {
     return '<p style="color:var(--gris5);padding:2rem;text-align:center">Elegí al menos 3 métricas.</p>';
   }
   const ind = datosJugadores[radarIndJugador];
-  const baseKey = _baremoLinea();
-  const baremo = (BAREMOS && BAREMOS[baseKey]) || {};
-  const baseLabel = { global: 'histórico global', def: 'vs defensores', med: 'vs mediocampistas', atk: 'vs delanteros' }[baseKey] || baseKey;
+  // Selección escalonada del baremo: división + posición → división → posición → global
+  const baremoInfo = _baremoActivo();
+  const baremo = baremoInfo.baremo;
+  const baseKey = baremoInfo.key;
+  const baseLabel = baremoInfo.label;
+  const divisionDetectada = _divisionDePartidosActuales();
 
   // viewBox amplio (820x820) para que labels largas no se recorten al exportar a PNG.
   // El radar en sí ocupa R=200, las etiquetas van a R+36 ≈ 236, sobra margen.
@@ -2545,11 +2661,74 @@ function dibujarRadarIndividual() {
   svg += `<text x="${cx}" y="${cy+15}" fill="${P.sub}" font-size="10" text-anchor="middle">${ind.minutos||0}min · ${ind.intervenciones||0} interv.</text>`;
   svg += '</svg>';
 
+  // === LEYENDA EXPLICATIVA DETALLADA ===
+  // Pensada para que el coordinador (o cualquier persona no familiarizada con percentiles)
+  // entienda exactamente cómo leer el gráfico, contra qué se compara y qué significa cada cosa.
+  const escalaCfg = radarIndBase === 'auto'
+    ? `auto-detectado por la posición media del jugador en cancha → <b>${baseLabel}</b>`
+    : `forzado manualmente → <b>${baseLabel}</b>`;
+  const divisionInfo = divisionDetectada
+    ? `División detectada del nombre del/los archivo(s): <b>${divisionDetectada}</b>.`
+    : `No se detectó división del nombre del archivo (esperaba ej. "7ma vs Aldosivi" o similar).`;
+  const cantPartidos = baremoInfo.n;
+  const fallbackNota = baremoInfo.fallback
+    ? `<div style="margin-top:6px;padding:6px 10px;background:rgba(245,166,35,.1);border-left:3px solid var(--ambar);border-radius:4px;color:#fcd34d;font-size:11px">
+        ⚠ <b>Fallback aplicado:</b> ${baremoInfo.motivo}. Se está usando <b>${baseLabel}</b>.
+       </div>`
+    : '';
+
   return `
     ${svg}
-    <div style="font-size:10.5px;color:var(--gris5);margin-top:8px;text-align:center">
-      Cada eje va del <b>p10</b> (centro) al <b>p90</b> (borde) del histórico ${baseLabel} · ${(BAREMOS?._meta?.jugador_partidos)||'—'} jugador-partidos de referencia.
-      El número es el valor real del jugador en este/estos partido(s).
+    <div style="margin-top:14px;padding:14px 16px;border:1px solid var(--gris3);border-radius:8px;background:var(--gris1);font-size:12px;line-height:1.55;color:var(--blanco)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--gris3)">
+        <span style="font-size:14px">📊</span>
+        <b style="font-size:13px;color:var(--blanco)">Cómo se lee este gráfico</b>
+        <span style="margin-left:auto;font-size:10.5px;color:var(--gris5)">${cantPartidos || '—'} actuaciones de referencia · ${baseLabel}</span>
+      </div>
+
+      ${fallbackNota}
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 18px">
+        <div>
+          <div style="color:var(--rojo);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">📐 Qué significa la posición de cada punto</div>
+          <div style="color:var(--gris5)">
+            Cada <b style="color:var(--blanco)">punto rojo</b> sobre los ejes representa una estadística.
+            Cuanto <b style="color:var(--blanco)">más lejos del centro está el punto</b>, mejor está el jugador en esa estadística.
+            Si el punto queda cerca del centro, el jugador está flojo en eso.
+            Si llega al borde, está entre los mejores de su categoría y posición.
+          </div>
+        </div>
+
+        <div>
+          <div style="color:var(--rojo);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">📏 Cómo está calibrada la escala</div>
+          <div style="color:var(--gris5)">
+            El <b style="color:var(--blanco)">centro</b> = nivel del <b style="color:var(--blanco)">10% más bajo</b> del histórico (de su categoría) en esa estadística.<br>
+            El <b style="color:var(--blanco)">borde</b> = nivel del <b style="color:var(--blanco)">10% más alto</b> del histórico (de su categoría).<br>
+            <span style="color:var(--ambar)">Ejemplo:</span> si el punto de "Remates al arco" llega al 80% del borde,
+            el jugador remató casi tanto como los mejores rematadores en su categoría y posición.
+          </div>
+        </div>
+
+        <div style="grid-column:1/-1">
+          <div style="color:var(--rojo);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">⚖ Contra quién se compara (lo importante)</div>
+          <div style="color:var(--gris5)">
+            ${divisionInfo}<br>
+            Se está comparando contra <b style="color:var(--blanco)">${baseLabel}</b> — <b>${cantPartidos}</b> actuaciones de referencia.<br>
+            <span style="color:var(--ambar)">Arriba en la lista de jugadores</span> quedaron tildados solo los compañeros que el sistema clasifica en este mismo grupo,
+            para que puedas chequear visualmente si la categorización está bien. Si ves a alguien mal clasificado, cambiá la "Escala" arriba o destildá manualmente.
+          </div>
+        </div>
+
+        <div style="grid-column:1/-1">
+          <div style="color:var(--rojo);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">🔢 Qué muestran los números</div>
+          <div style="color:var(--gris5)">
+            El número en rojo <b>al lado</b> de cada punto es el <b style="color:var(--blanco)">valor real</b> del jugador en este/estos partido(s)
+            — ej: <code style="background:var(--gris2);padding:1px 5px;border-radius:3px;color:#ccc">15</code> = el jugador hizo 15 acciones de ese tipo,
+            <code style="background:var(--gris2);padding:1px 5px;border-radius:3px;color:#ccc">67%</code> = tuvo esa efectividad.
+            En el centro están el apellido del jugador, los minutos jugados y el total de acciones registradas.
+          </div>
+        </div>
+      </div>
     </div>`;
 }
 
@@ -2582,8 +2761,12 @@ function exportarRadarPNG() {
 
 function setChartType(t) {
   chartType = t;
-  if (t === 'radar_ind' && !BAREMOS) {
-    cargarBaremos().then(() => renderCreadorContent());
+  if (t === 'radar_ind') {
+    if (!BAREMOS) {
+      cargarBaremos().then(() => { _sincronizarSeleccionConBaremoRadar(); renderCreadorContent(); });
+    } else {
+      _sincronizarSeleccionConBaremoRadar();
+    }
   }
   renderCreadorContent();
 }
