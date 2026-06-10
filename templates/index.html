@@ -3246,8 +3246,10 @@ const CATS_ACCION = [
   ['recup',      'Recuperaciones', ['RECUPERACION xPosicional','RECUPERACION xIntervencion','Tras Perdida']],
   ['perd',       'Pérdidas',       ['PERDIDAS: xPase','PERDIDAS: xControl','PERDIDAS: xGambeta']],
   ['remates',    'Remates',        ['Tiros','Arco','Afuera','Bloqueado','Gol']],
-  ['duelos_of',  'Duelos OF',      ['1v1O+','1v1O-','DAO+','DAO-','Regates','R+','R-','Duelos 1V1','Duelos Aereos']],
-  ['duelos_def', 'Duelos DEF',     ['1v1D+','1v1D-','DAD+','DAD-']],
+  // Nota: NO incluir 'Duelos 1V1' ni 'Duelos Aereos' acá — son tags agrupadores que
+  // Sportcode aplica a TODOS los duelos (of y def). Solo los específicos discriminan.
+  ['duelos_of',  'Duelos OF',      ['1v1O+','1v1O-','DAO+','DAO-','DAOfensivo','Regates','R+','R-']],
+  ['duelos_def', 'Duelos DEF',     ['1v1D+','1v1D-','DAD+','DAD-','DADefensivo']],
   ['defensa',    'Defensa',        ['Intervencion Defensiva','Despeje','Bloqueos','Entradas','Intercepciones','E+','E-','I+','I-','B+','B-','A+','A-']],
   ['recep',      'Recepciones',    ['Recepcion entre Lineas','Recepcion al espacio','Recepcion a espaldas del volante','Toques en Area Rival','Ruptura en conduccion']],
 ];
