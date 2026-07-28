@@ -1,0 +1,23 @@
+name: Keep Render Awake
+
+# Mantiene despierto el servicio de Render (plan gratis) para evitar el cold
+# start de ~34s. Pinguea la app cada 10 minutos. El free tier de Render duerme
+# el servicio tras 15 min de inactividad, así que 10 min deja margen.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # cada 10 minutos
+  workflow_dispatch:          # permite dispararlo a mano desde la pestaña Actions
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping app
+        run: |
+          echo "Pinging river-app.onrender.com ..."
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 https://river-app.onrender.com/ || echo "000")
+          echo "HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "::warning::Render respondió $code (puede estar despertando)"
+          fi
