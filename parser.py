@@ -4,8 +4,54 @@ Lógica: datos individuales en columna Ungrouped (tags separados por coma)
 """
 
 import io
+import os
+import csv as csvmod
 from pathlib import Path
 import pandas as pd
+
+# ─── xT (Expected Threat) — grilla 8x12 de Karun Singh ──────────────────────
+# El CSV está en static/xT_Grid.csv (8 filas × 12 columnas, valores 0–0.26).
+# La cancha es 120×80, así que cada celda mide 10×10 metros.
+XT_GRID_PATH = os.path.join(os.path.dirname(__file__), "static", "xT_Grid.csv")
+_XT_GRID = None  # Loaded lazily — matrix [y_bin][x_bin]
+
+
+def _load_xt_grid():
+    global _XT_GRID
+    if _XT_GRID is not None:
+        return _XT_GRID
+    try:
+        grid = []
+        with open(XT_GRID_PATH, "r") as f:
+            for row in csvmod.reader(f):
+                vals = [float(v) for v in row if v.strip()]
+                if vals:
+                    grid.append(vals)
+        # Validar 8x12
+        if len(grid) == 8 and all(len(r) == 12 for r in grid):
+            _XT_GRID = grid
+        else:
+            _XT_GRID = []  # malformed → desactivamos xT silenciosamente
+    except Exception:
+        _XT_GRID = []
+    return _XT_GRID
+
+
+def _xt_value(x, y):
+    """xT de la celda (x, y) en cancha 120×80. Devuelve None si fuera de rango o sin grilla."""
+    grid = _load_xt_grid()
+    if not grid:
+        return None
+    if x is None or y is None:
+        return None
+    try:
+        if pd.isna(x) or pd.isna(y):
+            return None
+    except (TypeError, ValueError):
+        return None
+    cx = max(0, min(11, int(float(x) // 10)))
+    cy = max(0, min(7, int(float(y) // 10)))
+    return grid[cy][cx]
 
 # ─── Categorías colectivas ───────────────────────────────────────────────────
 
@@ -106,6 +152,14 @@ def enriquecer_df(df: pd.DataFrame) -> pd.DataFrame:
     df["distancia"]    = ((df["x_end"] - df["x_start"]) ** 2 +
                           (df["y_end"] - df["y_start"]) ** 2) ** 0.5
     df["progresivo"]   = df["progresion_x"] >= PROGRESION_MIN
+
+    # ── xT (Expected Threat) — siempre recalculado para consistencia ──
+    if _load_xt_grid():
+        df["xt_start"] = df.apply(lambda r: _xt_value(r["x_start"], r["y_start"]), axis=1)
+        df["xt_end"]   = df.apply(lambda r: _xt_value(r["x_end"],   r["y_end"]),   axis=1)
+        df["xt_delta"] = df["xt_end"] - df["xt_start"]  # NaN si falta xt_end (acciones sin destino)
+    else:
+        df["xt_start"] = df["xt_end"] = df["xt_delta"] = pd.NA
     return df
 
 
@@ -260,6 +314,15 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
     corners_p = contar(df[df["Row"] == "Detenidas Propias"]["cual"]).get("Corner", 0) if "cual" in df.columns else 0
     corners_r = contar(df[df["Row"] == "Detenidas Rivales"]["cual"]).get("Corner", 0) if "cual" in df.columns else 0
 
+    def heat_puntos(cats):
+        """Devuelve [[x, y], ...] de las acciones con coords de las categorías dadas.
+        Sirve para el mapa de calor de 'remates al arco' del informe."""
+        if "x_start" not in df.columns:
+            return []
+        sub = df[df["Row"].isin(cats) & df["x_start"].notna() & df["y_start"].notna()]
+        return [[round(float(r["x_start"]), 1), round(float(r["y_start"]), 1)]
+                for _, r in sub.iterrows()]
+
     return {
         "partido":        nombre_partido(df),
         "goles_propios":  goles_detalle("Goles Propios"),
@@ -286,6 +349,10 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
         "matriz_llegadas":     _crosstab(df, "Llegadas Propias",       "Tipo de Jugada", "Finalización"),
         "matriz_amp_carril":   _crosstab(df, "Llegadas Propias",       "Amplitud",       "Finalización"),
         "matriz_sit_gol":      _crosstab(df, "Situaciones de Gol Propias", "Tipo de Jugada", "Finalización"),
+        "matriz_sit_gol_riv":  _crosstab(df, "Situaciones de Gol Rival",   "Tipo de Jugada", "Finalización"),
+        # Puntos para el heatmap de remates al arco del informe
+        "heat_remates_prop":   heat_puntos(["Situaciones de Gol Propias", "Llegadas Propias"]),
+        "heat_remates_riv":    heat_puntos(["Situaciones de Gol Rival", "Llegadas Rivales"]),
     }
 
 
@@ -349,6 +416,78 @@ def inferir_cambios(df: pd.DataFrame) -> list:
     return cambios
 
 
+# ─── Match Momentum (xT acumulado por minuto — solo River) ──────────────────
+
+# Rows colectivas que NO son jugadores propios (las usamos solo para clasificar).
+_ROWS_COLECTIVAS = set(CATS_PROPIAS) | set(CATS_RIVALES)
+
+
+def momentum_xt(df: pd.DataFrame, bin_seg: int = 60, total_seg: int = 90 * 60) -> list:
+    """Serie temporal de xT generado por River por bin de tiempo.
+
+    Importante: NO incluimos xT del rival porque no tenemos su granularidad
+    (Sportcode solo taggea eventos colectivos del rival como "Llegadas Rivales",
+    no cada pase). Comparar "xT propio detallado" vs "xT rival agregado" sería
+    engañoso. Marcamos sí los goles rivales como referencia temporal.
+
+    Devuelve: list[{minuto, xt_propio, gol_propio, gol_rival}]
+    """
+    n_bins = (total_seg + bin_seg - 1) // bin_seg
+    propio = [0.0] * n_bins
+    goles_p = [0] * n_bins
+    goles_r = [0] * n_bins
+
+    if "Start time" not in df.columns or "Row" not in df.columns:
+        return [{
+            "minuto": (i * bin_seg) / 60.0,
+            "xt_propio": 0.0,
+            "gol_propio": 0, "gol_rival": 0,
+        } for i in range(n_bins)]
+
+    has_xt = "xt_delta" in df.columns
+    cols_min = ["Start time", "Row"]
+    if "Ungrouped" in df.columns: cols_min.append("Ungrouped")
+    if has_xt: cols_min.append("xt_delta")
+    sub = df[cols_min].copy()
+
+    for r in sub.itertuples(index=False):
+        t = r[0]
+        if pd.isna(t):
+            continue
+        bin_idx = int(t // bin_seg)
+        if bin_idx < 0 or bin_idx >= n_bins:
+            continue
+
+        row_name = str(r[1]) if r[1] is not None else ""
+
+        # Goles (independiente de xT)
+        if row_name == "Goles Propios":
+            goles_p[bin_idx] += 1
+            continue
+        if row_name == "Goles Rivales":
+            goles_r[bin_idx] += 1
+            continue
+
+        # Acciones individuales de jugadores propios completadas (pases/centros/regates)
+        if row_name not in _ROWS_COLECTIVAS and row_name != "":
+            if has_xt:
+                tags = str(r[2]) if len(r) > 2 and r[2] is not None else ""
+                d = r[3]
+                if not pd.isna(d) and d > 0:
+                    tl = tags.lower()
+                    es_completa = ("pcompleto" in tl or "ccompleto" in tl
+                                    or " r+" in tl or ",r+" in tl or tl.startswith("r+"))
+                    if es_completa:
+                        propio[bin_idx] += float(d)
+
+    return [{
+        "minuto":     (i * bin_seg) / 60.0,
+        "xt_propio":  round(propio[i], 4),
+        "gol_propio": goles_p[i],
+        "gol_rival":  goles_r[i],
+    } for i in range(n_bins)]
+
+
 # ─── Acumulación multi-partido ───────────────────────────────────────────────
 
 def analizar_partido(df: pd.DataFrame) -> dict:
@@ -360,14 +499,17 @@ def analizar_partido(df: pd.DataFrame) -> dict:
         "minutos":    calcular_minutos(df),
         "cambios":    inferir_cambios(df),
         "goles":      tabla_goles(df),
+        "momentum":   momentum_xt(df),
     }
 
 
 def _sumar_numericos(dst: dict, src: dict) -> dict:
-    """Suma recursivamente claves numéricas; preserva strings del primero."""
+    """Suma recursivamente claves numéricas; concatena listas; preserva strings del primero."""
     for k, v in src.items():
         if isinstance(v, dict):
             dst[k] = _sumar_numericos(dst.get(k, {}), v)
+        elif isinstance(v, list):
+            dst[k] = dst.get(k, []) + v  # concatenar (ej. puntos del heatmap acumulados)
         elif isinstance(v, (int, float)) and not isinstance(v, bool):
             dst[k] = dst.get(k, 0) + v
         else:
@@ -430,6 +572,15 @@ def combinar_partidos(resultados: list) -> dict:
         cambios += _etiquetar(r["cambios"], tag, "minuto")
         goles += _etiquetar(r["goles"], tag, "minuto")
 
+    # Momentum: si hay 1 partido lo devolvemos tal cual; si hay varios,
+    # devolvemos una lista por partido para que el front decida (no tiene
+    # sentido "promediar" momentum entre partidos distintos).
+    momentums = []
+    for r in resultados:
+        m = r.get("momentum") or []
+        if m:
+            momentums.append({"partido": r.get("partido", ""), "puntos": m})
+
     return {
         "partido":    etiqueta,
         "partidos":   nombres,
@@ -438,6 +589,8 @@ def combinar_partidos(resultados: list) -> dict:
         "minutos":    minutos,
         "cambios":    cambios,
         "goles":      goles,
+        "momentum":   resultados[0].get("momentum") if len(resultados) == 1 else [],
+        "momentums":  momentums,
     }
 
 
@@ -712,24 +865,22 @@ def estadisticas_individuales(df: pd.DataFrame, jugador: str) -> dict:
         return round((rem_sup[s]["arco"] + rem_sup[s]["gol"]) / tot * 100) if tot else 0
     rem_efect = {s: _ef(s) for s in rem_sup}
 
-    # Goles y asistencias cruzando con goles propios.
-    # Asistencia = última acción del jugador (en los 45s previos al gol) etiquetada como
-    # "CAsistencia" (centro asistencia) o "Clave" (pase clave). Matching insensible a
-    # mayúsculas/tildes/espacios para cubrir variaciones de tagging.
+    # Asistencias — se leen DIRECTAMENTE del tag individual del jugador:
+    #   PAsistencia = asistencia de pase   ·   CAsistencia = asistencia de centro
+    # El analista ya marca la acción como asistencia al taggearla, así que se cuentan
+    # 1:1. (Antes se cruzaba con "Goles Propios" —dato colectivo— dentro de una ventana
+    #  temporal; fallaba cuando el timestamp del centro/pase quedaba fuera de esa ventana,
+    #  p. ej. si el centro se taggeaba unos segundos DESPUÉS del gol. Reporte de A. Urricelqui.)
     goles_jug = tiro_gol
-    asistencias = 0
+    asist_pases = 0
     asist_centros = 0
-    asist_pases  = 0
-    goles_prop_df = df[df["Row"] == "Goles Propios"]
-    for _, grow in goles_prop_df.iterrows():
-        t_gol = grow["Start time"]
-        previas = sub[(sub["Start time"] <= t_gol + 2) & (sub["Start time"] >= t_gol - 45)]
-        for _, prev_row in previas.iterrows():
-            prev_tags_norm = {_norm_tag(x) for x in get_tags(prev_row)}
-            if "casistencia" in prev_tags_norm:
-                asistencias += 1; asist_centros += 1; break
-            if "clave" in prev_tags_norm and ("pcompletos" in prev_tags_norm or "ccompletos" in prev_tags_norm):
-                asistencias += 1; asist_pases += 1; break
+    for _, row in sub.iterrows():
+        tn = {_norm_tag(x) for x in get_tags(row)}
+        if "pasistencia" in tn:
+            asist_pases += 1
+        if "casistencia" in tn:
+            asist_centros += 1
+    asistencias = asist_pases + asist_centros
 
     return {
         "jugador":          jugador,
