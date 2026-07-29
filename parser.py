@@ -155,6 +155,21 @@ def get_tags(row) -> set:
     return {t.strip() for t in str(val).split(",")}
 
 
+def es_remate(row) -> bool:
+    """La fila individual es un remate (tag Tiros)."""
+    return "Tiros" in get_tags(row)
+
+
+def coord_remate(r):
+    """(x, y) donde se ejecutó el remate: la ÚLTIMA coordenada de la jugada.
+    En jugadas compuestas (ej. x='46, 107') el primer valor es donde arranca
+    la jugada y el último donde se remata — el punto del mapa debe ser el remate
+    (pedido A.U.: un gol quedaba dibujado en mitad de cancha)."""
+    if pd.notna(r.get("x_end")) and pd.notna(r.get("y_end")):
+        return float(r["x_end"]), float(r["y_end"])
+    return float(r["x_start"]), float(r["y_start"])
+
+
 def detectar_jugadores(df: pd.DataFrame) -> list:
     conocidas = set(CATS_PROPIAS + CATS_RIVALES + ["PT", "ST", "1T", "2T"])
     # Variantes de tagging 2026 que no son jugadores (reporte: "Situaciones para
@@ -317,7 +332,8 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
             elif "Bloqueado" in rem: res = "bloqueado"
             elif "Afuera" in rem:   res = "afuera"
             else:                    res = "otro"
-            remates_riv_puntos.append([round(float(r["x_start"]), 1), round(float(r["y_start"]), 1), res])
+            _rx, _ry = coord_remate(r)
+            remates_riv_puntos.append([round(_rx, 1), round(_ry, 1), res])
             if pd.notna(r.get("Start time")):
                 _ts_vistos.append(float(r["Start time"]))
         _gr = df[(df["Row"] == "Goles Rivales") & df["x_start"].notna() & df["y_start"].notna()]
@@ -325,7 +341,8 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
             t = float(r["Start time"]) if pd.notna(r.get("Start time")) else None
             if t is not None and any(abs(t - v) <= 5 for v in _ts_vistos):
                 continue  # ya está como llegada
-            remates_riv_puntos.append([round(float(r["x_start"]), 1), round(float(r["y_start"]), 1), "gol"])
+            _rx, _ry = coord_remate(r)
+            remates_riv_puntos.append([round(_rx, 1), round(_ry, 1), "gol"])
 
     corners_p = contar(df[df["Row"] == "Detenidas Propias"]["cual"]).get("Corner", 0) if "cual" in df.columns else 0
     corners_r = contar(df[df["Row"] == "Detenidas Rivales"]["cual"]).get("Corner", 0) if "cual" in df.columns else 0
@@ -1047,12 +1064,13 @@ def calcular_momentum(dfs: list) -> dict:
 
 
 def _heat_puntos(df: pd.DataFrame, cats: list) -> list:
-    """[[x, y], ...] de acciones con coords de las categorías dadas."""
+    """[[x, y], ...] de finalizaciones: la última coordenada de cada jugada
+    (donde se remata, no donde arranca)."""
     if "x_start" not in df.columns:
         return []
     sub = df[df["Row"].isin(cats) & df["x_start"].notna() & df["y_start"].notna()]
-    return [[round(float(r["x_start"]), 1), round(float(r["y_start"]), 1)]
-            for _, r in sub.iterrows()]
+    return [[round(x, 1), round(y, 1)]
+            for x, y in (coord_remate(r) for _, r in sub.iterrows())]
 
 
 def calcular_heatmap_informe(dfs: list) -> dict:

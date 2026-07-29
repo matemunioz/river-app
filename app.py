@@ -205,9 +205,14 @@ def pdf_individual():
     for df in dfs:
         sub = df[(df["Row"] == jugador) & df["x_start"].notna() & df["y_start"].notna()]
         for _, r in sub.iterrows():
+            # Remates en la última coordenada (donde se remata), igual que el mapa web
+            if sc.es_remate(r):
+                px, py = sc.coord_remate(r)
+            else:
+                px, py = float(r["x_start"]), float(r["y_start"])
             coords.append({
-                "x":  float(r["x_start"]),
-                "y":  float(r["y_start"]),
+                "x":  px,
+                "y":  py,
                 "xe": float(r["x_end"]) if pd.notna(r.get("x_end")) else None,
                 "ye": float(r["y_end"]) if pd.notna(r.get("y_end")) else None,
                 "prog": bool(r.get("progresivo", False)),
@@ -271,13 +276,22 @@ def _coords_de_jugadores(dfs, jugadores):
         sub = df[df["Row"].isin(jugs_set) & df["x_start"].notna() & df["y_start"].notna()]
         for _, r in sub.iterrows():
             video_raw = r.get("video") if "video" in df.columns else None
+            # Remates: el punto del mapa es DONDE se remata (última coordenada
+            # de la jugada), no donde arranca (pedido A.U.: un gol tras jugada
+            # individual quedaba dibujado en mitad de cancha).
+            if sc.es_remate(r):
+                px, py = sc.coord_remate(r)
+                en_area = bool(r.get("en_area_end", False) or r.get("en_area_start", False))
+            else:
+                px, py = float(r["x_start"]), float(r["y_start"])
+                en_area = bool(r.get("en_area_start", False))
             acciones.append({
-                "x":  float(r["x_start"]),
-                "y":  float(r["y_start"]),
+                "x":  px,
+                "y":  py,
                 "xe": float(r["x_end"]) if pd.notna(r.get("x_end")) else None,
                 "ye": float(r["y_end"]) if pd.notna(r.get("y_end")) else None,
                 "prog": bool(r.get("progresivo", False)),
-                "area": bool(r.get("en_area_start", False)),
+                "area": en_area,
                 "t":  float(r["Start time"]) if pd.notna(r.get("Start time")) else 0,
                 "duration": float(r["Duration"]) if "Duration" in df.columns and pd.notna(r.get("Duration")) else None,
                 "video":   str(video_raw) if pd.notna(video_raw) else None,
