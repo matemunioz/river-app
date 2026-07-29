@@ -156,7 +156,15 @@ def get_tags(row) -> set:
 
 
 def detectar_jugadores(df: pd.DataFrame) -> list:
-    conocidas = set(CATS_PROPIAS + CATS_RIVALES + ["PT", "ST"])
+    conocidas = set(CATS_PROPIAS + CATS_RIVALES + ["PT", "ST", "1T", "2T"])
+    # Variantes de tagging 2026 que no son jugadores (reporte: "Situaciones para
+    # Mostrar" aparecía en minutos jugados)
+    conocidas |= {
+        "Situaciones para Mostrar", "Inicios de juego Propios",
+        "Transiciones Ofensivas", "Transiciones Defensivas",
+        "Inicios de juego Propio", "Transicion Ofensiva Rival",
+        "Transicion Defensiva Rival",
+    }
     return sorted(set(df["Row"].dropna().unique()) - conocidas)
 
 
@@ -220,9 +228,32 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
 
     def salidas_detalle(cat):
         sub = df[df["Row"] == cat]
+
+        def _primero(v):
+            """Primer valor limpio de una celda (a veces vienen duplicados: 'Eje, Eje')."""
+            if pd.isna(v):
+                return None
+            s = str(v).split(",")[0].strip()
+            return s or None
+
         tipo = contar(sub["Tipo"]) if "Tipo" in sub.columns else {}
         resultado = contar(sub["Resultado"]) if "Resultado" in sub.columns else {}
         sector = contar(sub["Sector"]) if "Sector" in sub.columns else {}
+
+        # Matriz Sector × Tipo con progresión por celda — para la grilla del informe
+        # (cada salida cuenta UNA vez: se toma el primer valor de cada celda).
+        matriz = {}   # {"Izquierda": {"Corta": {"n": 3, "progresa": 2}, ...}, ...}
+        for _, r in sub.iterrows():
+            s = _primero(r.get("Sector")) if "Sector" in sub.columns else None
+            t = _primero(r.get("Tipo")) if "Tipo" in sub.columns else None
+            res = _primero(r.get("Resultado")) if "Resultado" in sub.columns else None
+            if not s or not t:
+                continue
+            celda = matriz.setdefault(s, {}).setdefault(t, {"n": 0, "progresa": 0})
+            celda["n"] += 1
+            if res == "Progresa":
+                celda["progresa"] += 1
+
         return {
             "total": len(sub),
             "cortas": tipo.get("Corta", 0),
@@ -232,6 +263,7 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
             "izq": sector.get("Izquierda", 0),
             "eje": sector.get("Eje", 0),
             "der": sector.get("Derecha", 0),
+            "matriz": matriz,
         }
 
     def goles_detalle(cat):
@@ -257,6 +289,44 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
             "incompletos": res.get("Incompleto", 0),
         }
 
+    # Recuperadas/Pérdidas por SUMA INDIVIDUAL (tags de jugadores) — pedido de
+    # A. Urricelqui: el dato colectivo (filas "Recuperadas"/"Perdidas") no coincide
+    # con la realidad porque no todas se taggean colectivamente.
+    _jugs = set(detectar_jugadores(df))
+    _sub_jug = df[df["Row"].isin(_jugs)]
+    if "Ungrouped" in df.columns and len(_sub_jug):
+        _u = _sub_jug["Ungrouped"].fillna("").astype(str)
+        recuperadas_ind = int((_u.str.contains("RECUPERACION", case=False)
+                                | _u.str.contains("Tras Perdida", case=False)).sum())
+        perdidas_ind = int(_u.str.contains("PERDIDAS", case=False).sum())
+    else:
+        recuperadas_ind = perdidas_ind = 0
+
+    # Puntos de remates RIVALES para el mapa (x, y, resultado) — fuente primaria:
+    # "Llegadas Rivales" (tiene coords + resultado del remate al 100%). Se agregan
+    # los "Goles Rivales" con coords que no estén ya (dedupe por tiempo ±5s).
+    remates_riv_puntos = []
+    if "x_start" in df.columns:
+        _lr = df[(df["Row"] == "Llegadas Rivales") & df["x_start"].notna() & df["y_start"].notna()]
+        _ts_vistos = []
+        for _, r in _lr.iterrows():
+            rem = str(r.get("Remates") or "") if "Remates" in df.columns and pd.notna(r.get("Remates")) else ""
+            # Resultado más específico primero
+            if "Gol" in rem:        res = "gol"
+            elif "Arco" in rem:     res = "arco"
+            elif "Bloqueado" in rem: res = "bloqueado"
+            elif "Afuera" in rem:   res = "afuera"
+            else:                    res = "otro"
+            remates_riv_puntos.append([round(float(r["x_start"]), 1), round(float(r["y_start"]), 1), res])
+            if pd.notna(r.get("Start time")):
+                _ts_vistos.append(float(r["Start time"]))
+        _gr = df[(df["Row"] == "Goles Rivales") & df["x_start"].notna() & df["y_start"].notna()]
+        for _, r in _gr.iterrows():
+            t = float(r["Start time"]) if pd.notna(r.get("Start time")) else None
+            if t is not None and any(abs(t - v) <= 5 for v in _ts_vistos):
+                continue  # ya está como llegada
+            remates_riv_puntos.append([round(float(r["x_start"]), 1), round(float(r["y_start"]), 1), "gol"])
+
     corners_p = contar(df[df["Row"] == "Detenidas Propias"]["cual"]).get("Corner", 0) if "cual" in df.columns else 0
     corners_r = contar(df[df["Row"] == "Detenidas Rivales"]["cual"]).get("Corner", 0) if "cual" in df.columns else 0
 
@@ -280,6 +350,9 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
         "bloques":        _n(df, "Bloque") + _n(df, "Bloques"),
         "perdidas":       _n(df, "Perdidas"),
         "recuperadas":    _n(df, "Recuperadas"),
+        "perdidas_ind":     perdidas_ind,      # suma de tags individuales (pedido A.U.)
+        "recuperadas_ind":  recuperadas_ind,   # suma de tags individuales (pedido A.U.)
+        "remates_riv_puntos": remates_riv_puntos,  # [[x, y, resultado], ...] para el mapa rival
         "corners_prop":   corners_p,
         "corners_riv":    corners_r,
         # Matrices cruzadas — para análisis de carril/tipo
@@ -364,10 +437,12 @@ def analizar_partido(df: pd.DataFrame) -> dict:
 
 
 def _sumar_numericos(dst: dict, src: dict) -> dict:
-    """Suma recursivamente claves numéricas; preserva strings del primero."""
+    """Suma recursivamente claves numéricas; concatena listas; preserva strings del primero."""
     for k, v in src.items():
         if isinstance(v, dict):
             dst[k] = _sumar_numericos(dst.get(k, {}), v)
+        elif isinstance(v, list):
+            dst[k] = dst.get(k, []) + v  # ej. remates_riv_puntos acumulados
         elif isinstance(v, (int, float)) and not isinstance(v, bool):
             dst[k] = dst.get(k, 0) + v
         else:
@@ -549,6 +624,7 @@ def estadisticas_individuales(df: pd.DataFrame, jugador: str) -> dict:
     p_compl = p_incompl = 0
     p_adelante = p_atras = p_lateral = 0
     p_largo_c = p_largo_i = p_filtrado = p_clave = p_apoyo = 0
+    apoyo_c = apoyo_i = 0
     c_compl = c_incompl = 0
     tiro_arco = tiro_afuera = tiro_bloq = tiro_gol = 0
     # Remates por superficie (cab=cabeza, pieh=pie hábil, piei=pie inhábil, sd=sin dato)
@@ -582,11 +658,16 @@ def estadisticas_individuales(df: pd.DataFrame, jugador: str) -> dict:
             if "Largo Completo" in t: p_largo_c += 1
             if "Filtrado" in t: p_filtrado += 1
             if "Clave" in t:    p_clave += 1
-            if "Apoyo" in t:    p_apoyo += 1
+            if "Apoyo" in t:
+                p_apoyo += 1
+                apoyo_c += 1
 
         elif "PIncompletos" in t:
             p_incompl += 1
             if "Largo Incompleto" in t: p_largo_i += 1
+            if "Apoyo" in t:
+                p_apoyo += 1
+                apoyo_i += 1
 
         # ── CENTROS ──────────────────────────────────────────────────────
         if "CCompletos" in t:
@@ -751,6 +832,8 @@ def estadisticas_individuales(df: pd.DataFrame, jugador: str) -> dict:
         "pases_filtrado":   p_filtrado,
         "pases_clave":      p_clave,
         "pases_apoyo":      p_apoyo,
+        "apoyo_c":          apoyo_c,
+        "apoyo_i":          apoyo_i,
         # centros
         "centros_c":        c_compl,
         "centros_i":        c_incompl,
@@ -849,3 +932,213 @@ def estadisticas_individuales(df: pd.DataFrame, jugador: str) -> dict:
         "_sum_prog": sum_prog,
         "_sum_dist": sum_dist,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CÁLCULOS PESADOS — SOLO se llaman desde endpoints dedicados (carga diferida).
+# NO se ejecutan en analizar_partido / estadisticas_individuales para no pesar
+# el request principal. El frontend v3 los pide aparte, con lazy loading.
+# ═══════════════════════════════════════════════════════════════════════════
+
+import os as _os
+import csv as _csvmod
+
+# ─── xT (Expected Threat) — grilla 8×12 de Karun Singh ──────────────────────
+_XT_GRID_PATH = _os.path.join(_os.path.dirname(__file__), "static", "xT_Grid.csv")
+_XT_GRID = None
+
+
+def _load_xt_grid():
+    global _XT_GRID
+    if _XT_GRID is not None:
+        return _XT_GRID
+    try:
+        grid = []
+        with open(_XT_GRID_PATH, "r") as f:
+            for row in _csvmod.reader(f):
+                vals = [float(v) for v in row if v.strip()]
+                if vals:
+                    grid.append(vals)
+        _XT_GRID = grid if (len(grid) == 8 and all(len(r) == 12 for r in grid)) else []
+    except Exception:
+        _XT_GRID = []
+    return _XT_GRID
+
+
+def _xt_value(x, y):
+    grid = _load_xt_grid()
+    if not grid or x is None or y is None:
+        return None
+    try:
+        if pd.isna(x) or pd.isna(y):
+            return None
+    except (TypeError, ValueError):
+        return None
+    cx = max(0, min(11, int(float(x) // 10)))
+    cy = max(0, min(7, int(float(y) // 10)))
+    return grid[cy][cx]
+
+
+def _agregar_xt(df: pd.DataFrame) -> pd.DataFrame:
+    """Agrega xt_start/xt_end/xt_delta. Solo se usa dentro de calcular_momentum."""
+    if not _load_xt_grid() or "x_start" not in df.columns:
+        df["xt_start"] = df["xt_end"] = df["xt_delta"] = pd.NA
+        return df
+    df["xt_start"] = df.apply(lambda r: _xt_value(r.get("x_start"), r.get("y_start")), axis=1)
+    df["xt_end"]   = df.apply(lambda r: _xt_value(r.get("x_end"),   r.get("y_end")),   axis=1)
+    df["xt_delta"] = df["xt_end"] - df["xt_start"]
+    return df
+
+
+_ROWS_COLECTIVAS_XT = set(CATS_PROPIAS) | set(CATS_RIVALES)
+
+
+def momentum_xt(df: pd.DataFrame, bin_seg: int = 60, total_seg: int = 90 * 60) -> list:
+    """Serie temporal de xT generado por River por bin de tiempo (+ goles).
+    NO incluye xT rival (no hay granularidad equivalente en el tagging)."""
+    n_bins = (total_seg + bin_seg - 1) // bin_seg
+    propio = [0.0] * n_bins
+    goles_p = [0] * n_bins
+    goles_r = [0] * n_bins
+    if "Start time" not in df.columns or "Row" not in df.columns:
+        return [{"minuto": (i * bin_seg) / 60.0, "xt_propio": 0.0, "gol_propio": 0, "gol_rival": 0}
+                for i in range(n_bins)]
+    has_xt = "xt_delta" in df.columns
+    cols = ["Start time", "Row"]
+    if "Ungrouped" in df.columns: cols.append("Ungrouped")
+    if has_xt: cols.append("xt_delta")
+    for r in df[cols].itertuples(index=False):
+        t = r[0]
+        if pd.isna(t):
+            continue
+        b = int(t // bin_seg)
+        if b < 0 or b >= n_bins:
+            continue
+        row_name = str(r[1]) if r[1] is not None else ""
+        if row_name == "Goles Propios":
+            goles_p[b] += 1; continue
+        if row_name == "Goles Rivales":
+            goles_r[b] += 1; continue
+        if row_name not in _ROWS_COLECTIVAS_XT and row_name != "" and has_xt:
+            tags = str(r[2]) if len(r) > 2 and r[2] is not None else ""
+            d = r[3]
+            if not pd.isna(d) and d > 0:
+                tl = tags.lower()
+                if ("pcompleto" in tl or "ccompleto" in tl or " r+" in tl
+                        or ",r+" in tl or tl.startswith("r+")):
+                    propio[b] += float(d)
+    return [{"minuto": (i * bin_seg) / 60.0, "xt_propio": round(propio[i], 4),
+             "gol_propio": goles_p[i], "gol_rival": goles_r[i]} for i in range(n_bins)]
+
+
+def calcular_momentum(dfs: list) -> dict:
+    """Momentum de una lista de dfs. Devuelve {momentum, momentums}.
+    Se llama SOLO desde /api/momentum (carga diferida)."""
+    momentums = []
+    for df in dfs:
+        _agregar_xt(df)
+        puntos = momentum_xt(df)
+        if puntos:
+            momentums.append({"partido": nombre_partido(df), "puntos": puntos})
+    return {
+        "momentum": momentums[0]["puntos"] if len(momentums) == 1 else [],
+        "momentums": momentums,
+    }
+
+
+def _heat_puntos(df: pd.DataFrame, cats: list) -> list:
+    """[[x, y], ...] de acciones con coords de las categorías dadas."""
+    if "x_start" not in df.columns:
+        return []
+    sub = df[df["Row"].isin(cats) & df["x_start"].notna() & df["y_start"].notna()]
+    return [[round(float(r["x_start"]), 1), round(float(r["y_start"]), 1)]
+            for _, r in sub.iterrows()]
+
+
+def calcular_heatmap_informe(dfs: list) -> dict:
+    """Heat points (remates propios/rivales) + matriz_sit_gol_riv, combinados de
+    todos los dfs. Se llama SOLO desde /api/heatmap-informe (carga diferida)."""
+    heat_p, heat_r = [], []
+    matriz_riv = {}
+    for df in dfs:
+        heat_p += _heat_puntos(df, ["Situaciones de Gol Propias", "Llegadas Propias"])
+        heat_r += _heat_puntos(df, ["Situaciones de Gol Rival", "Llegadas Rivales"])
+        m = _crosstab(df, "Situaciones de Gol Rival", "Tipo de Jugada", "Finalización")
+        for k1, sub in m.items():
+            for k2, v in sub.items():
+                matriz_riv.setdefault(k1, {}).setdefault(k2, 0)
+                matriz_riv[k1][k2] += v
+    return {
+        "heat_remates_prop": heat_p,
+        "heat_remates_riv": heat_r,
+        "matriz_sit_gol_riv": matriz_riv,
+    }
+
+
+# ─── Red de conexiones de pases (pass network) ───────────────────────────────
+# El tagging NO registra el receptor del pase. Se infiere: para cada pase
+# completado de A, la siguiente acción individual de OTRO jugador B dentro de
+# VENTANA_CONEXION segundos se toma como recepción. Validado con datos reales:
+# ventana 6s conecta ~85% de los pases y ~94% de las conexiones son plausibles.
+# Es una red direccional agregada (quién juega con quién), no event-data exacto.
+
+VENTANA_CONEXION = 6.0  # segundos
+
+
+def red_pases(dfs: list) -> dict:
+    """Nodos (jugadores con posición media) + aristas (conexiones A→B) de todos los dfs."""
+    conexiones = {}   # (a, b) -> n
+    pases_por_jug = {}
+    pos_sum = {}      # jugador -> [sum_x, sum_y, n]
+
+    for df in dfs:
+        jugadores = set(detectar_jugadores(df))
+        if not jugadores or "Start time" not in df.columns:
+            continue
+
+        sub = df[df["Row"].isin(jugadores) & df["Start time"].notna()].copy()
+        sub = sub.sort_values("Start time")
+
+        # Posiciones medias (para ubicar los nodos en la cancha)
+        if "x_start" in sub.columns:
+            con_xy = sub[sub["x_start"].notna() & sub["y_start"].notna()]
+            for j, g in con_xy.groupby("Row"):
+                acc = pos_sum.setdefault(str(j), [0.0, 0.0, 0])
+                acc[0] += float(g["x_start"].sum())
+                acc[1] += float(g["y_start"].sum())
+                acc[2] += len(g)
+
+        # Lista ordenada de (t, jugador, tags)
+        filas = []
+        for _, r in sub.iterrows():
+            u = str(r.get("Ungrouped") or "") if pd.notna(r.get("Ungrouped")) else ""
+            filas.append((float(r["Start time"]), str(r["Row"]), u))
+
+        for i, (t, jug, tags) in enumerate(filas):
+            if "PCompletos" not in tags:
+                continue
+            pases_por_jug[jug] = pases_por_jug.get(jug, 0) + 1
+            # Buscar la siguiente acción de OTRO jugador dentro de la ventana
+            for j in range(i + 1, len(filas)):
+                t2, jug2, _tags2 = filas[j]
+                if t2 - t > VENTANA_CONEXION:
+                    break
+                if jug2 != jug:
+                    key = (jug, jug2)
+                    conexiones[key] = conexiones.get(key, 0) + 1
+                    break
+
+    nodos = []
+    for j, (sx, sy, n) in pos_sum.items():
+        if n < 5:
+            continue  # muy pocas acciones con coords para ubicarlo
+        nodos.append({
+            "jugador": j,
+            "x": round(sx / n, 1),
+            "y": round(sy / n, 1),
+            "pases": pases_por_jug.get(j, 0),
+        })
+
+    aristas = [{"de": a, "a": b, "n": n} for (a, b), n in conexiones.items()]
+    aristas.sort(key=lambda e: -e["n"])
+    return {"nodos": nodos, "aristas": aristas, "ventana_seg": VENTANA_CONEXION}

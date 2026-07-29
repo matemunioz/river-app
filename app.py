@@ -8,6 +8,7 @@ import pandas as pd
 from flask import Flask, jsonify, render_template, request, send_file
 import parser as sc
 import pdf_gen as pg
+import pdf_individual_v2 as pg_v2
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
@@ -67,6 +68,42 @@ def analizar():
     # Adjunto las colectivas por partido para drill-down en el hero
     out["partidos_data"] = [r["colectivas"] for r in resultados]
     return jsonify(out)
+
+
+# ─── Endpoints de CARGA DIFERIDA (cálculos pesados, se piden aparte) ─────────
+# El frontend v3 los llama por su cuenta cuando entra a la pantalla que los usa,
+# con lazy loading, para no pesar el request principal (/api/analizar).
+
+@app.route("/api/momentum", methods=["POST"])
+def momentum():
+    """Match Momentum (xT por minuto). Se calcula solo cuando se pide."""
+    try:
+        dfs = leer_todos(request)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(sc.calcular_momentum(dfs))
+
+
+@app.route("/api/heatmap-informe", methods=["POST"])
+def heatmap_informe():
+    """Heatmap de remates + matriz sit. gol rival para el informe anual.
+    Se calcula solo cuando se pide."""
+    try:
+        dfs = leer_todos(request)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(sc.calcular_heatmap_informe(dfs))
+
+
+@app.route("/api/red-pases", methods=["POST"])
+def red_pases():
+    """Red de conexiones de pases (inferida por secuencia temporal).
+    Carga diferida: se pide solo al abrir la sección."""
+    try:
+        dfs = leer_todos(request)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(sc.red_pases(dfs))
 
 
 @app.route("/api/pdf/colectivo", methods=["POST"])
@@ -177,7 +214,7 @@ def pdf_individual():
                 "tags": str(r.get("Ungrouped") or "") if pd.notna(r.get("Ungrouped")) else "",
             })
 
-    pdf_bytes = pg.generar_pdf_individual(ind, partido, agg["minutos"], todos_jug=todos_jug, coords=coords)
+    pdf_bytes = pg_v2.generar_pdf_individual_v2(ind, partido, agg["minutos"], todos_jug=todos_jug, coords=coords)
     return send_file(
         io.BytesIO(pdf_bytes),
         mimetype="application/pdf",
@@ -233,6 +270,7 @@ def _coords_de_jugadores(dfs, jugadores):
     for df in dfs:
         sub = df[df["Row"].isin(jugs_set) & df["x_start"].notna() & df["y_start"].notna()]
         for _, r in sub.iterrows():
+            video_raw = r.get("video") if "video" in df.columns else None
             acciones.append({
                 "x":  float(r["x_start"]),
                 "y":  float(r["y_start"]),
@@ -241,6 +279,8 @@ def _coords_de_jugadores(dfs, jugadores):
                 "prog": bool(r.get("progresivo", False)),
                 "area": bool(r.get("en_area_start", False)),
                 "t":  float(r["Start time"]) if pd.notna(r.get("Start time")) else 0,
+                "duration": float(r["Duration"]) if "Duration" in df.columns and pd.notna(r.get("Duration")) else None,
+                "video":   str(video_raw) if pd.notna(video_raw) else None,
                 "tags":    str(r.get("Ungrouped") or "") if pd.notna(r.get("Ungrouped")) else "",
                 "partido": str(r.get("Timeline") or "") if pd.notna(r.get("Timeline")) else "",
                 "jugador": str(r["Row"]),

@@ -1250,16 +1250,20 @@ function renderResultados(d) {
   }
 
   function compareRow(label, vr, vv) {
-    const tot = (vr||0)+(vv||0);
-    const pr = tot>0 ? Math.round((vr||0)/tot*100) : 50;
+    // Barras que PARTEN DEL CENTRO hacia afuera (pedido A. Urricelqui):
+    // River crece hacia la izquierda, rival hacia la derecha. Escala: el mayor
+    // del par llega al 100% de su track; el otro queda proporcional.
+    const max = Math.max(vr||0, vv||0, 1);
+    const wr = Math.round((vr||0)/max*100);
+    const wv = Math.round((vv||0)/max*100);
     return `<div class="bar-row">
       <span class="bar-val river">${vr||0}</span>
-      <div class="bar-track" style="flex:1">
-        <div class="bar-fill-river" style="width:${pr}%"></div>
+      <div class="bar-track" style="flex:1;display:flex;justify-content:flex-end">
+        <div class="bar-fill-river" style="width:${wr}%"></div>
       </div>
       <span style="font-size:10px;color:var(--gris5);min-width:140px;text-align:center">${label}</span>
       <div class="bar-track" style="flex:1">
-        <div class="bar-fill-rival" style="width:${100-pr}%"></div>
+        <div class="bar-fill-rival" style="width:${wv}%"></div>
       </div>
       <span class="bar-val">${vv||0}</span>
     </div>`;
@@ -1267,6 +1271,78 @@ function renderResultados(d) {
 
   function miniCard(label, val, color='') {
     return `<div class="mini-card"><div class="mini-label">${label}</div><div class="mini-val ${color}">${val}</div></div>`;
+  }
+
+  // Grilla de salidas Sector × Tipo con % de progresión por celda (pedido A.U.:
+  // el gráfico anterior repetía el mismo valor en todas las celdas).
+  function gridSalidas(s) {
+    const m = s.matriz || {};
+    const filas = ['Izquierda', 'Eje', 'Derecha'];
+    const cols = ['Corta', 'Larga'];
+    const celda = (sec, tipo) => {
+      const c = (m[sec] && m[sec][tipo]) || { n: 0, progresa: 0 };
+      if (!c.n) return `<td style="padding:6px 10px;text-align:center;color:var(--gris4);border:1px dashed var(--gris3);font-size:11px">—</td>`;
+      const pct = Math.round(c.progresa / c.n * 100);
+      const col = pct >= 50 ? 'var(--verde)' : pct >= 30 ? 'var(--ambar)' : 'var(--gris5)';
+      return `<td style="padding:6px 10px;text-align:center;border:1px dashed var(--gris3)">
+        <span style="font-size:14px;font-weight:800">${c.progresa}/${c.n}</span>
+        <span style="font-size:10px;color:${col};display:block">(${pct}% progresa)</span>
+      </td>`;
+    };
+    const filaSec = (sec) => {
+      const tot = cols.reduce((a, t) => a + (((m[sec]||{})[t]||{}).n || 0), 0);
+      const prog = cols.reduce((a, t) => a + (((m[sec]||{})[t]||{}).progresa || 0), 0);
+      const pct = tot ? Math.round(prog / tot * 100) : 0;
+      return `<tr>
+        <td style="padding:6px 8px;font-size:10px;color:var(--gris5);font-weight:700;text-transform:uppercase">${sec === 'Izquierda' ? 'IZQ' : sec === 'Derecha' ? 'DER' : 'EJE'}</td>
+        ${cols.map(t => celda(sec, t)).join('')}
+        <td style="padding:6px 8px;font-size:11px;color:${tot ? (pct>=50?'var(--verde)':'var(--gris5)') : 'var(--gris4)'};font-weight:700">${tot ? `(${pct}%)` : ''}</td>
+      </tr>`;
+    };
+    return `<div class="sec-title">Salidas por sector y tipo</div>
+    <table style="width:100%;border-collapse:collapse;margin-top:4px">
+      <tr>
+        <td></td>
+        <td style="text-align:center;font-size:9px;color:var(--gris5);text-transform:uppercase;letter-spacing:.5px;padding-bottom:2px">En corto</td>
+        <td style="text-align:center;font-size:9px;color:var(--gris5);text-transform:uppercase;letter-spacing:.5px;padding-bottom:2px">En largo</td>
+        <td style="text-align:center;font-size:9px;color:var(--gris5)">% prog.</td>
+      </tr>
+      ${filas.map(filaSec).join('')}
+    </table>`;
+  }
+
+  // Mapa de remates rivales — media cancha propia (los remates del rival ocurren
+  // cerca de nuestro arco, x 0-40). Colores como el mapa de remates propio.
+  function mapaRematesRivales(puntos) {
+    if (!puntos.length) return `<p style="font-size:11px;color:var(--gris5);padding:8px 0">Sin remates rivales con coordenadas.</p>`;
+    const COL = { gol: null, arco: '#3ecf8e', afuera: '#CC0000', bloqueado: '#f5a623', otro: '#999' };
+    // Media cancha propia horizontal: x 0-60 (arco propio a la izquierda), y 0-80
+    let svg = `<svg viewBox="0 0 60 80" style="width:100%;max-width:340px;height:auto;background:#141414;border-radius:6px;display:block;margin:6px auto">`;
+    // líneas: arco propio a la izquierda
+    svg += `<rect x="0.5" y="0.5" width="59" height="79" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
+    svg += `<rect x="0" y="18" width="18" height="44" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
+    svg += `<rect x="0" y="30" width="6" height="20" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
+    svg += `<path d="M 18 33.5 A 9.15 9.15 0 0 0 18 46.5" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
+    svg += `<text x="57" y="77" fill="#666" font-size="3" text-anchor="end">← atacan ellos</text>`;
+    puntos.forEach(p => {
+      const x = Math.min(59, Math.max(1, p[0]));
+      const y = 80 - Math.min(79, Math.max(1, p[1]));  // flip vertical como el mapa propio
+      const res = p[2] || 'otro';
+      const tip = res === 'gol' ? 'Gol rival' : res === 'arco' ? 'Remate al arco' : res === 'bloqueado' ? 'Bloqueado' : res === 'afuera' ? 'Afuera' : 'Remate';
+      if (res === 'gol') {
+        svg += `<g data-tip="${tip}"><image href="/static/pelota.png" x="${x-1.8}" y="${y-1.8}" width="3.6" height="3.6"/></g>`;
+      } else {
+        svg += `<g data-tip="${tip}"><circle cx="${x}" cy="${y}" r="1.4" fill="${COL[res]||'#999'}" opacity="0.9"/></g>`;
+      }
+    });
+    svg += `</svg>`;
+    svg += `<div style="display:flex;gap:10px;justify-content:center;font-size:9.5px;color:var(--gris5);margin-top:2px">
+      <span>⚽ Gol</span>
+      <span style="color:#3ecf8e">● Al arco</span>
+      <span style="color:#f5a623">● Bloqueado</span>
+      <span style="color:#CC0000">● Afuera</span>
+    </div>`;
+    return svg;
   }
 
   // Jugadores select
@@ -1336,7 +1412,7 @@ function renderResultados(d) {
       ['llegadas',    'Llegadas',        lp.total,            'red',   `${lr.total} del rival`],
       ['sit_gol',     'Sit. de Gol',     col.sit_gol_prop,    'amber', `${col.sit_gol_riv} del rival`],
       ['remates',     'Remates al arco', lp.tiros_arco,       'red',   `${lr.tiros_arco} del rival`],
-      ['recuperadas', 'Recuperadas',     col.recuperadas,     'green', `${col.perdidas} pérdidas`],
+      ['recuperadas', 'Recuperadas',     (col.recuperadas_ind ?? col.recuperadas), 'green', `${col.perdidas_ind ?? col.perdidas} pérdidas`],
     ].map(([k,l,v,c,sub]) => `<div class="kpi-card clickable ${resumenDetalleAbierto===k?'active':''}" data-key="${k}" onclick="toggleResumenDetalle('${k}')"><div class="kpi-card-label">${l}</div><div class="kpi-card-val ${c}">${v}</div><div class="kpi-card-sub">${sub}</div></div>`).join('')}
   </div>
   <div id="resumen-detalle" class="plantel-detalle">${renderResumenDetalle(resumenDetalleAbierto)}</div>
@@ -1373,8 +1449,8 @@ function renderResultados(d) {
         ${miniCard('Trans. defensiva', col.trans_def)}
         ${miniCard('Circulaciones', col.circulaciones)}
         ${miniCard('Bloques', col.bloques, 'green')}
-        ${miniCard('Pérdidas', col.perdidas, 'red')}
-        ${miniCard('Recuperadas', col.recuperadas, 'green')}
+        ${miniCard('Pérdidas', col.perdidas_ind ?? col.perdidas, 'red')}
+        ${miniCard('Recuperadas', col.recuperadas_ind ?? col.recuperadas, 'green')}
       </div>
     </div>
 
@@ -1411,12 +1487,7 @@ function renderResultados(d) {
           ${miniCard('En largo', sp.largas)}
           ${miniCard('Progresa', sp.progresa, 'green')}
         </div>
-        <div class="sec-title">Orientación</div>
-        <div class="mini-grid">
-          ${miniCard('Izquierda', sp.izq)}
-          ${miniCard('Eje', sp.eje)}
-          ${miniCard('Derecha', sp.der)}
-        </div>
+        ${gridSalidas(sp)}
       </div>
     </div>
 
@@ -1515,20 +1586,17 @@ function renderResultados(d) {
           ${miniCard('En largo', sr.largas)}
           ${miniCard('Progresa', sr.progresa)}
         </div>
-        <div class="sec-title">Orientación</div>
-        <div class="mini-grid">
-          ${miniCard('Izquierda', sr.izq)}
-          ${miniCard('Eje', sr.eje)}
-          ${miniCard('Derecha', sr.der)}
-        </div>
+        ${gridSalidas(sr)}
+        <div class="sec-title">Mapa de remates rivales</div>
+        ${mapaRematesRivales(col.remates_riv_puntos || [])}
       </div>
     </div>
 
     <div class="section">
       <div class="section-head"><div class="section-title">Trabajo defensivo</div></div>
       <div class="mini-grid" style="grid-template-columns:repeat(4,1fr)">
-        ${miniCard('Recuperadas', col.recuperadas, 'green')}
-        ${miniCard('Pérdidas', col.perdidas, 'red')}
+        ${miniCard('Recuperadas', col.recuperadas_ind ?? col.recuperadas, 'green')}
+        ${miniCard('Pérdidas', col.perdidas_ind ?? col.perdidas, 'red')}
         ${miniCard('Bloques', col.bloques, 'green')}
         ${miniCard('Trans. defensiva', col.trans_def)}
       </div>
@@ -2148,9 +2216,98 @@ function renderColContent() {
   // Cargar coords combinadas de TODOS los jugadores seleccionados antes de pintar el HTML
   fetchCoordsMulti(seleccionados).then(coords => {
     coordsActuales = coords || [];
-    cont.innerHTML = buildIndHTML(sum);
+    cont.innerHTML = buildIndHTML(sum) + seccionRedPases();
     renderMapaTerritorial(); // dentro del HTML del colectivo
   });
+}
+
+// ─── Red de conexiones de pases (carga diferida) ────────────────────────────
+// El receptor se infiere: siguiente acción individual de otro jugador dentro
+// de 6s del pase completado (~85% de pases conectados, ~94% plausibles).
+let _redPasesCache = null;
+
+function seccionRedPases() {
+  return `
+  <div class="pitch-section" style="margin-top:1.2rem">
+    <div class="pitch-head">
+      <div class="perfil-titulo">🔗 Conexiones de pases</div>
+      <button class="btn" id="btn-red-pases" onclick="cargarRedPases()" style="padding:4px 12px;font-size:11px">Generar red</button>
+    </div>
+    <div id="red-pases-cont">
+      <p style="font-size:11px;color:var(--gris5)">Tocá "Generar red" para calcular las conexiones (quién juega con quién). El receptor se infiere de la secuencia temporal del tagging — es una aproximación, no event-data exacto.</p>
+    </div>
+  </div>`;
+}
+
+function cargarRedPases() {
+  const cont = document.getElementById('red-pases-cont');
+  const btn = document.getElementById('btn-red-pases');
+  if (!cont) return;
+  _redPasesCache = null;  // siempre recalcular (los partidos/minutos pueden haber cambiado)
+  if (btn) { btn.disabled = true; btn.textContent = 'Calculando…'; }
+  cont.innerHTML = '<p style="font-size:11px;color:var(--gris5)">Calculando conexiones…</p>';
+  const fd = new FormData();
+  Array.from(partidosSel).sort((a,b)=>a-b).forEach(i => fd.append('archivo', archivosActuales[i]));
+  fdTiempo(fd);
+  fetch('/api/red-pases', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+      _redPasesCache = d;
+      cont.innerHTML = dibujarRedPases(d);
+      if (btn) { btn.disabled = false; btn.textContent = 'Regenerar'; }
+    })
+    .catch(() => {
+      cont.innerHTML = '<p style="font-size:11px;color:var(--rojo)">Error al calcular la red.</p>';
+      if (btn) { btn.disabled = false; btn.textContent = 'Reintentar'; }
+    });
+}
+
+function dibujarRedPases(d) {
+  const nodos = d.nodos || [];
+  const aristas = (d.aristas || []).filter(e => e.n >= 3); // conexiones con al menos 3 pases
+  if (!nodos.length) return '<p style="font-size:11px;color:var(--gris5)">Sin datos suficientes.</p>';
+  const pos = {};
+  nodos.forEach(n => { pos[n.jugador] = n; });
+  const maxN = Math.max(1, ...aristas.map(e => e.n));
+  const maxP = Math.max(1, ...nodos.map(n => n.pases));
+
+  let svg = `<svg viewBox="0 0 120 80" style="width:100%;height:auto;background:#141414;border-radius:8px">`;
+  svg += pitchLinesSvgApp('#2e2e2e');
+  // Aristas (debajo de los nodos): grosor y opacidad ∝ cantidad de pases
+  aristas.forEach(e => {
+    const a = pos[e.de], b = pos[e.a];
+    if (!a || !b) return;
+    const w = 0.4 + (e.n / maxN) * 2.2;
+    const op = 0.25 + (e.n / maxN) * 0.65;
+    svg += `<g data-tip="${e.de} → ${e.a}: ${e.n} pases">` +
+      `<line x1="${a.x}" y1="${80-a.y}" x2="${b.x}" y2="${80-b.y}" stroke="#CC0000" stroke-width="${w}" opacity="${op}"/>` +
+      `</g>`;
+  });
+  // Nodos: radio ∝ pases completados
+  nodos.forEach(n => {
+    const r = 2 + (n.pases / maxP) * 2.5;
+    const y = 80 - n.y;
+    svg += `<g data-tip="${n.jugador} · ${n.pases} pases">` +
+      `<circle cx="${n.x}" cy="${y}" r="${r}" fill="#f5f5f5" stroke="#CC0000" stroke-width="0.6"/>` +
+      `</g>`;
+    const ap = n.jugador.split(/\s+/).pop().slice(0, 10);
+    svg += `<text x="${n.x}" y="${y + r + 3}" fill="#ccc" font-size="2.6" text-anchor="middle" font-weight="700">${ap}</text>`;
+  });
+  svg += `</svg>`;
+  svg += `<div style="font-size:9.5px;color:var(--gris5);text-align:center;margin-top:4px">` +
+    `Línea más gruesa = más pases entre esos jugadores (mín. 3) · Nodo más grande = más pases completados · posición = ubicación media real</div>`;
+  return svg;
+}
+
+// Líneas de cancha para la red (copia liviana de dibujarCancha, solo líneas)
+function pitchLinesSvgApp(lc) {
+  let s = '';
+  s += `<rect x="0.5" y="0.5" width="119" height="79" fill="none" stroke="${lc}" stroke-width="0.4"/>`;
+  s += `<line x1="60" y1="0" x2="60" y2="80" stroke="${lc}" stroke-width="0.4"/>`;
+  s += `<circle cx="60" cy="40" r="9.15" fill="none" stroke="${lc}" stroke-width="0.4"/>`;
+  s += `<rect x="0" y="18" width="18" height="44" fill="none" stroke="${lc}" stroke-width="0.4"/>`;
+  s += `<rect x="102" y="18" width="18" height="44" fill="none" stroke="${lc}" stroke-width="0.4"/>`;
+  return s;
 }
 
 let _notasTaggingCache = null;
@@ -4491,7 +4648,12 @@ function beeswarmCompacto(ind, todos, seleccionados = null) {
   const W = 200, H = 70;
   return `<div class="beeswarm-grid">${
     METRICAS_PIZZA.map(m => {
-      const valores = candidatos.map(j => ({ nombre: j.jugador, v: j[m.k] || 0 }));
+      // Los jugadores con valor 0 se excluyen del riel (se apilaban en el borde
+      // izquierdo y parecían decoración — pedido A. Urricelqui "revisar puntos grises").
+      // Se informa cuántos quedaron en 0 con un contador al pie.
+      const todosVals = candidatos.map(j => ({ nombre: j.jugador, v: j[m.k] || 0 }));
+      const valores = todosVals.filter(p => p.v > 0 || (setSel ? setSel.has(p.nombre) : p.nombre === ind.jugador));
+      const enCero = todosVals.length - valores.length;
       const max = Math.max(1, ...valores.map(p => p.v));
       const sx = v => 16 + (v / max) * (W - 32);
       const yVal = 38;
@@ -4504,6 +4666,9 @@ function beeswarmCompacto(ind, todos, seleccionados = null) {
         const esEl = setSel ? setSel.has(p.nombre) : (p.nombre === ind.jugador);
         svg += `<circle cx="${cx}" cy="${cy}" r="${esEl?4.5:2.5}" fill="${esEl?'#CC0000':'#555'}" opacity="${esEl?1:0.55}"><title>${p.nombre}: ${p.v}${m.unidad||''}</title></circle>`;
       });
+      if (enCero > 0) {
+        svg += `<text x="16" y="${yVal+16}" fill="#777" font-size="8" text-anchor="start">${enCero} jug. en 0</text>`;
+      }
       // Marca de promedio del grupo (línea vertical roja punteada) en modo colectivo
       if (setSel) {
         const xAvg = sx(ind[m.k] || 0);
@@ -4599,6 +4764,7 @@ function buildIndHTML(ind) {
     'faltas_hec', 'interv_entrada_p', 'interv_anticipo_p',
     'rem_cab_afuera', 'rem_cab_bloq', 'rem_pieh_afuera', 'rem_pieh_bloq',
     'rem_piei_afuera', 'rem_piei_bloq', 'negativos',
+    'pases_largo_i', 'apoyo_i',
   ]);
   const COLORES_FIJOS = new Set(['', 'red', 'green', 'amber', 'blue']);
 
@@ -4757,6 +4923,9 @@ function buildIndHTML(ind) {
       <div class="ind-block-title sub">Valor agregado</div>
       ${ir('Filtrados', ind.pases_filtrado, 'pases_filtrado')}
       ${ir('Largos completos', ind.pases_largo_c, 'pases_largo_c')}
+      ${ir('Largos incompletos', ind.pases_largo_i||0, 'pases_largo_i')}
+      ${ir('Apoyos completos', ind.apoyo_c||0, 'apoyo_c')}
+      ${ir('Apoyos incompletos', ind.apoyo_i||0, 'apoyo_i')}
       ${(() => {
         const cc = ind.centros_c || 0, ci = ind.centros_i || 0, ct = cc + ci;
         const efc = ct ? Math.round(cc / ct * 100) : 0;
@@ -4776,6 +4945,10 @@ function buildIndHTML(ind) {
       ${ir('1v1 Of. Perdidos', ind.dao_minus, 'dao_minus')}
       ${ir('1v1 Def. Ganados', ind.dad_plus, 'dad_plus')}
       ${ir('1v1 Def. Perdidos', ind.dad_minus, 'dad_minus')}
+      ${ir('Aéreos Of. Ganados', ind.aereo_og||0, 'aereo_og')}
+      ${ir('Aéreos Of. Perdidos', ind.aereo_op||0, 'aereo_op')}
+      ${ir('Aéreos Def. Ganados', ind.aereo_dg||0, 'aereo_dg')}
+      ${ir('Aéreos Def. Perdidos', ind.aereo_dp||0, 'aereo_dp')}
       ${ir('Regate completo', ind.regate_c, 'regate_c')}
       ${ir('Regate incompleto', ind.regate_i, 'regate_i')}
       <div class="ind-block-title sub">Remates · efectividad ${ind.remates_efect||0}%</div>
