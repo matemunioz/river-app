@@ -870,6 +870,9 @@ const METRICAS = [
   ['recup_interv', 'Recup. por intervención'],
   ['recup_tras', 'Recup. tras pérdida'],
   ['perd_total', 'Pérdidas totales'],
+  ['perd_control', 'Pérdidas por control'],
+  ['perd_pase', 'Pérdidas por pase'],
+  ['perd_gambeta', 'Pérdidas por gambeta'],
   ['intercepciones', 'Intercepciones'],
   ['bloqueos', 'Bloqueos'],
   ['toques_area', 'Toques en área rival'],
@@ -4748,6 +4751,43 @@ function renderRematesPorSuperficie(ind) {
   return html;
 }
 
+// Desglose de pérdidas por tipo, con el mismo formato que "Por superficie" de los
+// remates (pedido A.U.: "cómo fueron las pérdidas: control, pase o gambeta").
+function renderPerdidasPorTipo(ind) {
+  const filas = [
+    ['Por control',  'perd_control'],
+    ['Por pase',     'perd_pase'],
+    ['Por gambeta',  'perd_gambeta'],
+  ];
+  const total = filas.reduce((s, [_, k]) => s + (ind[k]||0), 0);
+  if (total === 0) {
+    return `<div style="font-size:10px;color:var(--gris5);padding:6px 0 2px">Sin tags de tipo de pérdida. Etiquetá <i>PERDIDAS: xControl</i> / <i>xPase</i> / <i>xGambeta</i> en Sportcode para ver el desglose.</div>`;
+  }
+  const GRID = 'grid-template-columns:1fr 34px 42px';
+  let html = '<div class="ind-block-title sub">Pérdidas por tipo</div>';
+  html += `<div style="display:grid;${GRID};gap:4px 8px;font-size:10px;color:var(--gris5);padding:4px 0 2px;text-transform:uppercase;letter-spacing:.4px">
+    <span></span>
+    <span style="text-align:right">Cant.</span>
+    <span style="text-align:right">% del tot.</span>
+  </div>`;
+  filas.forEach(([lbl, k]) => {
+    const n = ind[k]||0;
+    const pct = Math.round(n / total * 100);
+    // El tipo dominante se marca en rojo: es por donde más pierde la pelota.
+    const col = pct >= 45 ? 'red' : pct >= 30 ? 'amber' : '';
+    html += `<div style="display:grid;${GRID};gap:4px 8px;align-items:center;padding:3px 0;border-top:1px dashed var(--gris3)">
+      <span style="font-size:12px">${lbl}</span>
+      <span class="ind-row-val"      style="text-align:right">${n}</span>
+      <span class="ind-row-val ${col}" style="text-align:right">${pct}%</span>
+    </div>`;
+  });
+  const dif = (ind.perd_total||0) - total;
+  if (dif > 0) {
+    html += `<div style="font-size:10px;color:var(--gris5);padding:6px 0 0">${dif} pérdida(s) sin tag de tipo.</div>`;
+  }
+  return html;
+}
+
 function buildIndHTML(ind) {
   if (!ind || Object.keys(ind).length === 0) return '<p style="color:var(--gris5)">Sin datos individuales para este jugador.</p>';
 
@@ -4981,9 +5021,11 @@ function buildIndHTML(ind) {
       ${ir('Pérdidas totales', ind.perd_total, 'perd_total')}
       ${ir('Intercepciones', ind.intercepciones, 'intercepciones')}
       ${ir('Bloqueos', ind.bloqueos, 'bloqueos')}
+      ${renderPerdidasPorTipo(ind)}
       <div class="ind-block-title sub">Movimiento</div>
       ${ir('Toques en área rival', ind.toques_area, 'toques_area')}
       ${ir('Recep. entre líneas', ind.recep_lineas, 'recep_lineas')}
+      ${ir('Recep. a espaldas del volante', ind.recep_espal, 'recep_espal')}
       ${ir('Recep. al espacio', ind.recep_espacio, 'recep_espacio')}
       ${ir('Ruptura en conducción', ind.ruptura, 'ruptura')}
     </div>
