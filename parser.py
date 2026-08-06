@@ -31,11 +31,42 @@ COLS_MULTI = [
     "Tipo", "Tipo de Jugada", "Resultado", "Sector", "cual",
 ]
 
+# Filas que NO son un jugador: categorías colectivas + marcas de tiempo.
+# Es la definición de "fila colectiva" que usan detectar_jugadores() y el
+# reescalado de coordenadas — una sola fuente de verdad.
+ROWS_NO_JUGADOR = set(CATS_PROPIAS + CATS_RIVALES) | {
+    "PT", "ST", "1T", "2T",
+    # Variantes de tagging 2026 que tampoco son jugadores (reporte: "Situaciones
+    # para Mostrar" aparecía en minutos jugados)
+    "Situaciones para Mostrar", "Inicios de juego Propios",
+    "Transiciones Ofensivas", "Transiciones Defensivas",
+    "Inicios de juego Propio", "Transicion Ofensiva Rival",
+    "Transicion Defensiva Rival",
+    # Conceptos tácticos de plantillas de tagging propias de cada analista
+    # (vistos en exports de 8va). No son jugadores: si quedaran fuera de esta
+    # lista se colarían en minutos jugados y sus coordenadas no se reescalarían.
+    "CIRCULACION DE PELOTA", "CIRCULACION DE PELOTA VA", "CIRC POSITIVAS",
+    "Circ. para Jorge", "MALAS RESOLUCIONES",
+    "Pases de Ruptura Propios", "Pases de Ruptura Rivales",
+    "DEFENSIVO POSITIVO", "DEFENSIVO POSITIVO VA",
+    "Linea defensiva", "Ofensiva", "Movilidad",
+    "Agresividad positiva", "Agresividad negativa",
+}
+
 UMBRAL_SEG = 300  # 5 min
 
 # ─── Cancha (Nacsport 120×80, ataque a la derecha) ───────────────────────────
 CANCHA_LARGO = 120
 CANCHA_ANCHO = 80
+
+# Los videoanalistas taggean lo COLECTIVO (propio y rival) sobre una cancha de
+# 105×68 (metros reales), mientras que lo INDIVIDUAL va en 120×80. Como todos
+# los mapas de la app dibujan en 120×80, las coordenadas colectivas se reescalan
+# al entrar; si no, los puntos quedan comprimidos hacia el ángulo inferior.
+CANCHA_COL_LARGO = 105
+CANCHA_COL_ANCHO = 68
+ESCALA_COL_X = CANCHA_LARGO / CANCHA_COL_LARGO   # 105 → 120
+ESCALA_COL_Y = CANCHA_ANCHO / CANCHA_COL_ANCHO   # 68  → 80
 AREA_X_MIN = 102          # último tramo antes del arco
 AREA_Y_MIN, AREA_Y_MAX = 18, 62
 ULTIMO_TERCIO_X = 80      # x ≥ 80 = último tercio
@@ -75,6 +106,34 @@ def _en_area(x, y):
     return x >= AREA_X_MIN and AREA_Y_MIN <= y <= AREA_Y_MAX
 
 
+def es_fila_colectiva(row_val) -> bool:
+    """La fila es una categoría colectiva (no un jugador)."""
+    return str(row_val).strip() in ROWS_NO_JUGADOR
+
+
+def _reescalar_colectivas(df: pd.DataFrame) -> pd.DataFrame:
+    """Lleva las coordenadas de las filas COLECTIVAS de 105×68 a 120×80.
+
+    Los videoanalistas taggean lo colectivo sobre la cancha en metros reales
+    (105×68) y lo individual sobre la grilla de 120×80. Como los mapas dibujan
+    en 120×80, sin este ajuste los puntos colectivos (llegadas, situaciones de
+    gol, remates rivales) aparecen corridos hacia el ángulo inferior izquierdo.
+
+    El escalado es lineal desde el origen: preserva la posición relativa dentro
+    de la cancha, que es la misma cancha física en ambos sistemas.
+    """
+    if "Row" not in df.columns:
+        return df
+    col = df["Row"].apply(es_fila_colectiva)
+    if not col.any():
+        return df
+    for c, f in (("x_start", ESCALA_COL_X), ("x_end", ESCALA_COL_X),
+                 ("y_start", ESCALA_COL_Y), ("y_end", ESCALA_COL_Y)):
+        if c in df.columns:
+            df.loc[col, c] = df.loc[col, c] * f
+    return df
+
+
 def enriquecer_df(df: pd.DataFrame) -> pd.DataFrame:
     """Agrega columnas derivadas de coordenadas. Idempotente."""
     if "x" in df.columns:
@@ -94,6 +153,10 @@ def enriquecer_df(df: pd.DataFrame) -> pd.DataFrame:
     df["y_start"] = pd.to_numeric(df["y_start"], errors="coerce")
     df["x_end"]   = pd.to_numeric(df["x_end"], errors="coerce")
     df["y_end"]   = pd.to_numeric(df["y_end"], errors="coerce")
+
+    # Las filas colectivas vienen en 105×68 → se llevan a 120×80 ANTES de derivar
+    # área / último tercio / progresión, para que esas métricas también sean justas.
+    _reescalar_colectivas(df)
 
     df["zona_start"] = df["x_start"].apply(_zona_x)
     df["zona_end"]   = df["x_end"].apply(_zona_x)
@@ -171,16 +234,7 @@ def coord_remate(r):
 
 
 def detectar_jugadores(df: pd.DataFrame) -> list:
-    conocidas = set(CATS_PROPIAS + CATS_RIVALES + ["PT", "ST", "1T", "2T"])
-    # Variantes de tagging 2026 que no son jugadores (reporte: "Situaciones para
-    # Mostrar" aparecía en minutos jugados)
-    conocidas |= {
-        "Situaciones para Mostrar", "Inicios de juego Propios",
-        "Transiciones Ofensivas", "Transiciones Defensivas",
-        "Inicios de juego Propio", "Transicion Ofensiva Rival",
-        "Transicion Defensiva Rival",
-    }
-    return sorted(set(df["Row"].dropna().unique()) - conocidas)
+    return sorted(set(df["Row"].dropna().unique()) - ROWS_NO_JUGADOR)
 
 
 def nombre_partido(df: pd.DataFrame, fname: str = "") -> str:
