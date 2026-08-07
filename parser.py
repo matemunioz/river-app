@@ -55,6 +55,12 @@ ROWS_NO_JUGADOR = set(CATS_PROPIAS + CATS_RIVALES) | {
 
 UMBRAL_SEG = 300  # 5 min
 
+# El mismo gol se taggea dos veces (fila "Goles X" y fila "Llegadas X") con unos
+# segundos de diferencia. Medido sobre 44 goles reales: el desfasaje llega hasta
+# 22s, y dos goles seguidos del mismo equipo nunca están a menos de 67s — así que
+# 30s une el 100% de los duplicados sin riesgo de comerse un gol distinto.
+DEDUPE_GOL_SEG = 30
+
 # ─── Cancha (Nacsport 120×80, ataque a la derecha) ───────────────────────────
 CANCHA_LARGO = 120
 CANCHA_ANCHO = 80
@@ -371,37 +377,45 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
     else:
         recuperadas_ind = perdidas_ind = 0
 
-    # Puntos de remates RIVALES para el mapa [x, y, resultado, t_seg, partido] —
-    # fuente primaria: "Llegadas Rivales" (tiene coords + resultado del remate al
-    # 100%). Se agregan los "Goles Rivales" con coords que no estén ya (dedupe por
-    # tiempo ±5s). t_seg y partido permiten reproducir el video de la jugada
-    # (los consumidores viejos destructuran [x, y, res] e ignoran el resto).
-    remates_riv_puntos = []
+    # Puntos de remates para los mapas [x, y, resultado, t_seg, partido], desde el
+    # tagging COLECTIVO (no la suma de acciones individuales): fuente primaria las
+    # "Llegadas" (traen coords + resultado del remate) y se suman los "Goles" con
+    # coords que no estén ya. Las situaciones de gol ya vienen dentro de las
+    # llegadas, verificado sobre los CSVs reales.
+    # t_seg y partido permiten reproducir el video de la jugada — los consumidores
+    # viejos destructuran [x, y, res] e ignoran el resto.
     _partido_nom = nombre_partido(df)
-    if "x_start" in df.columns:
-        _lr = df[(df["Row"] == "Llegadas Rivales") & df["x_start"].notna() & df["y_start"].notna()]
-        _ts_vistos = []
-        for _, r in _lr.iterrows():
+
+    def _puntos_remates(cat_llegadas: str, cat_goles: str) -> list:
+        if "x_start" not in df.columns:
+            return []
+        puntos, ts_vistos = [], []
+        _ll = df[(df["Row"] == cat_llegadas) & df["x_start"].notna() & df["y_start"].notna()]
+        for _, r in _ll.iterrows():
             rem = str(r.get("Remates") or "") if "Remates" in df.columns and pd.notna(r.get("Remates")) else ""
-            # Resultado más específico primero
-            if "Gol" in rem:        res = "gol"
-            elif "Arco" in rem:     res = "arco"
+            # Resultado más específico primero ("Gol, Arco" y "Arco, Gol" → gol)
+            if "Gol" in rem:         res = "gol"
+            elif "Arco" in rem:      res = "arco"
             elif "Bloqueado" in rem: res = "bloqueado"
-            elif "Afuera" in rem:   res = "afuera"
+            elif "Afuera" in rem:    res = "afuera"
             else:                    res = "otro"
-            _rx, _ry = coord_remate(r)
-            _t = round(float(r["Start time"]), 1) if pd.notna(r.get("Start time")) else None
-            remates_riv_puntos.append([round(_rx, 1), round(_ry, 1), res, _t, _partido_nom])
-            if _t is not None:
-                _ts_vistos.append(_t)
-        _gr = df[(df["Row"] == "Goles Rivales") & df["x_start"].notna() & df["y_start"].notna()]
-        for _, r in _gr.iterrows():
+            rx, ry = coord_remate(r)
+            t = round(float(r["Start time"]), 1) if pd.notna(r.get("Start time")) else None
+            puntos.append([round(rx, 1), round(ry, 1), res, t, _partido_nom])
+            if t is not None:
+                ts_vistos.append(t)
+        _gl = df[(df["Row"] == cat_goles) & df["x_start"].notna() & df["y_start"].notna()]
+        for _, r in _gl.iterrows():
             t = float(r["Start time"]) if pd.notna(r.get("Start time")) else None
-            if t is not None and any(abs(t - v) <= 5 for v in _ts_vistos):
+            if t is not None and any(abs(t - v) <= DEDUPE_GOL_SEG for v in ts_vistos):
                 continue  # ya está como llegada
-            _rx, _ry = coord_remate(r)
-            remates_riv_puntos.append([round(_rx, 1), round(_ry, 1), "gol",
-                                       round(t, 1) if t is not None else None, _partido_nom])
+            rx, ry = coord_remate(r)
+            puntos.append([round(rx, 1), round(ry, 1), "gol",
+                           round(t, 1) if t is not None else None, _partido_nom])
+        return puntos
+
+    remates_riv_puntos = _puntos_remates("Llegadas Rivales", "Goles Rivales")
+    remates_prop_puntos = _puntos_remates("Llegadas Propias", "Goles Propios")
 
     corners_p = contar(df[df["Row"] == "Detenidas Propias"]["cual"]).get("Corner", 0) if "cual" in df.columns else 0
     corners_r = contar(df[df["Row"] == "Detenidas Rivales"]["cual"]).get("Corner", 0) if "cual" in df.columns else 0
@@ -428,7 +442,9 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
         "recuperadas":    _n(df, "Recuperadas"),
         "perdidas_ind":     perdidas_ind,      # suma de tags individuales (pedido A.U.)
         "recuperadas_ind":  recuperadas_ind,   # suma de tags individuales (pedido A.U.)
-        "remates_riv_puntos": remates_riv_puntos,  # [[x, y, resultado], ...] para el mapa rival
+        # [[x, y, resultado, t_seg, partido], ...] para los mapas de remates
+        "remates_riv_puntos": remates_riv_puntos,
+        "remates_prop_puntos": remates_prop_puntos,
         "corners_prop":   corners_p,
         "corners_riv":    corners_r,
         # Matrices cruzadas — para análisis de carril/tipo
