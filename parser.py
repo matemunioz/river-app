@@ -371,10 +371,13 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
     else:
         recuperadas_ind = perdidas_ind = 0
 
-    # Puntos de remates RIVALES para el mapa (x, y, resultado) — fuente primaria:
-    # "Llegadas Rivales" (tiene coords + resultado del remate al 100%). Se agregan
-    # los "Goles Rivales" con coords que no estén ya (dedupe por tiempo ±5s).
+    # Puntos de remates RIVALES para el mapa [x, y, resultado, t_seg, partido] —
+    # fuente primaria: "Llegadas Rivales" (tiene coords + resultado del remate al
+    # 100%). Se agregan los "Goles Rivales" con coords que no estén ya (dedupe por
+    # tiempo ±5s). t_seg y partido permiten reproducir el video de la jugada
+    # (los consumidores viejos destructuran [x, y, res] e ignoran el resto).
     remates_riv_puntos = []
+    _partido_nom = nombre_partido(df)
     if "x_start" in df.columns:
         _lr = df[(df["Row"] == "Llegadas Rivales") & df["x_start"].notna() & df["y_start"].notna()]
         _ts_vistos = []
@@ -387,16 +390,18 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
             elif "Afuera" in rem:   res = "afuera"
             else:                    res = "otro"
             _rx, _ry = coord_remate(r)
-            remates_riv_puntos.append([round(_rx, 1), round(_ry, 1), res])
-            if pd.notna(r.get("Start time")):
-                _ts_vistos.append(float(r["Start time"]))
+            _t = round(float(r["Start time"]), 1) if pd.notna(r.get("Start time")) else None
+            remates_riv_puntos.append([round(_rx, 1), round(_ry, 1), res, _t, _partido_nom])
+            if _t is not None:
+                _ts_vistos.append(_t)
         _gr = df[(df["Row"] == "Goles Rivales") & df["x_start"].notna() & df["y_start"].notna()]
         for _, r in _gr.iterrows():
             t = float(r["Start time"]) if pd.notna(r.get("Start time")) else None
             if t is not None and any(abs(t - v) <= 5 for v in _ts_vistos):
                 continue  # ya está como llegada
             _rx, _ry = coord_remate(r)
-            remates_riv_puntos.append([round(_rx, 1), round(_ry, 1), "gol"])
+            remates_riv_puntos.append([round(_rx, 1), round(_ry, 1), "gol",
+                                       round(t, 1) if t is not None else None, _partido_nom])
 
     corners_p = contar(df[df["Row"] == "Detenidas Propias"]["cual"]).get("Corner", 0) if "cual" in df.columns else 0
     corners_r = contar(df[df["Row"] == "Detenidas Rivales"]["cual"]).get("Corner", 0) if "cual" in df.columns else 0
@@ -650,6 +655,7 @@ def combinar_individuales(lista: list) -> dict:
 
 def tabla_goles(df: pd.DataFrame) -> list:
     goles = []
+    partido = nombre_partido(df)
     for _, row in df[df["Row"].isin(["Goles Propios", "Goles Rivales"])].iterrows():
         equipo = "Propio" if row["Row"] == "Goles Propios" else "Rival"
         goles.append({
@@ -658,6 +664,10 @@ def tabla_goles(df: pd.DataFrame) -> list:
             "tipo":   str(row.get("Tipo de Jugada") or "—"),
             "remate": str(row.get("Remates") or "—"),
             "carril": str(row.get("Finalización") or "—"),
+            # Para reproducir el video de la jugada: segundo exacto + partido
+            "t":       float(row["Start time"]) if pd.notna(row.get("Start time")) else None,
+            "duracion": float(row["Duration"]) if "Duration" in df.columns and pd.notna(row.get("Duration")) else None,
+            "partido": partido,
         })
     return sorted(goles, key=lambda x: x["minuto"])
 
