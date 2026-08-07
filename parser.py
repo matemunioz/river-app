@@ -142,6 +142,12 @@ def _reescalar_colectivas(df: pd.DataFrame) -> pd.DataFrame:
 
 def enriquecer_df(df: pd.DataFrame) -> pd.DataFrame:
     """Agrega columnas derivadas de coordenadas. Idempotente."""
+    # Tiempos siempre numéricos: algunos exports traen el valor mal formateado
+    # ('4.445.383.761.673.990') y sin esto cualquier resta de tiempos rompe.
+    for _c in ("Start time", "Duration"):
+        if _c in df.columns:
+            df[_c] = pd.to_numeric(df[_c], errors="coerce")
+
     if "x" in df.columns:
         xs = df["x"].apply(_parse_coord)
         df["x_start"] = [t[0] for t in xs]
@@ -202,9 +208,32 @@ def leer_desde_bytes(data: bytes, ext: str) -> pd.DataFrame:
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
-def seg_a_min(seg: float) -> str:
-    seg = int(round(max(seg, 0)))
-    return f"{seg // 60}'{seg % 60:02d}\""
+def _primero(v):
+    """Primer valor limpio de una celda (a veces vienen duplicados: 'Eje, Eje')."""
+    if v is None or pd.isna(v):
+        return None
+    s = str(v).split(",")[0].strip()
+    return s or None
+
+
+def seg_num(v):
+    """Segundos como float, o None si el valor no es convertible.
+    Algunos exports traen el tiempo mal formateado (visto en un CSV de 8va:
+    '4.445.383.761.673.990'); sin esta guarda una fila corrupta tira el request."""
+    if v is None or pd.isna(v):
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def seg_a_min(seg) -> str:
+    s = seg_num(seg)
+    if s is None:
+        return "—"
+    s = int(round(max(s, 0)))
+    return f"{s // 60}'{s % 60:02d}\""
 
 
 def contar(serie: pd.Series) -> dict:
@@ -304,13 +333,6 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
     def salidas_detalle(cat):
         sub = df[df["Row"] == cat]
 
-        def _primero(v):
-            """Primer valor limpio de una celda (a veces vienen duplicados: 'Eje, Eje')."""
-            if pd.isna(v):
-                return None
-            s = str(v).split(",")[0].strip()
-            return s or None
-
         tipo = contar(sub["Tipo"]) if "Tipo" in sub.columns else {}
         resultado = contar(sub["Resultado"]) if "Resultado" in sub.columns else {}
         sector = contar(sub["Sector"]) if "Sector" in sub.columns else {}
@@ -386,6 +408,16 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
     # viejos destructuran [x, y, res] e ignoran el resto.
     _partido_nom = nombre_partido(df)
 
+    def _seg(r):
+        s = seg_num(r.get("Start time"))
+        return round(s, 1) if s is not None else None
+
+    def _ctx(r) -> tuple:
+        """(tipo de jugada, carril de finalización) para el tooltip del mapa."""
+        tipo = _primero(r.get("Tipo de Jugada")) if "Tipo de Jugada" in df.columns else None
+        carril = _primero(r.get("Finalización")) if "Finalización" in df.columns else None
+        return (tipo or None, carril or None)
+
     def _puntos_remates(cat_llegadas: str, cat_goles: str) -> list:
         if "x_start" not in df.columns:
             return []
@@ -393,25 +425,29 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
         _ll = df[(df["Row"] == cat_llegadas) & df["x_start"].notna() & df["y_start"].notna()]
         for _, r in _ll.iterrows():
             rem = str(r.get("Remates") or "") if "Remates" in df.columns and pd.notna(r.get("Remates")) else ""
-            # Resultado más específico primero ("Gol, Arco" y "Arco, Gol" → gol)
+            # Resultado más específico primero ("Gol, Arco" y "Arco, Gol" → gol).
+            # "sin_dato" = la llegada no tiene resultado de remate taggeado: puede
+            # ser que no haya terminado en remate o que falte el tag. No se cuenta
+            # como remate en los resúmenes.
             if "Gol" in rem:         res = "gol"
             elif "Arco" in rem:      res = "arco"
             elif "Bloqueado" in rem: res = "bloqueado"
             elif "Afuera" in rem:    res = "afuera"
-            else:                    res = "otro"
+            else:                    res = "sin_dato"
             rx, ry = coord_remate(r)
-            t = round(float(r["Start time"]), 1) if pd.notna(r.get("Start time")) else None
-            puntos.append([round(rx, 1), round(ry, 1), res, t, _partido_nom])
+            t = _seg(r)
+            tipo, carril = _ctx(r)
+            puntos.append([round(rx, 1), round(ry, 1), res, t, _partido_nom, tipo, carril])
             if t is not None:
                 ts_vistos.append(t)
         _gl = df[(df["Row"] == cat_goles) & df["x_start"].notna() & df["y_start"].notna()]
         for _, r in _gl.iterrows():
-            t = float(r["Start time"]) if pd.notna(r.get("Start time")) else None
+            t = _seg(r)
             if t is not None and any(abs(t - v) <= DEDUPE_GOL_SEG for v in ts_vistos):
                 continue  # ya está como llegada
             rx, ry = coord_remate(r)
-            puntos.append([round(rx, 1), round(ry, 1), "gol",
-                           round(t, 1) if t is not None else None, _partido_nom])
+            tipo, carril = _ctx(r)
+            puntos.append([round(rx, 1), round(ry, 1), "gol", t, _partido_nom, tipo, carril])
         return puntos
 
     remates_riv_puntos = _puntos_remates("Llegadas Rivales", "Goles Rivales")
@@ -459,9 +495,12 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
 def calcular_minutos(df: pd.DataFrame) -> list:
     jugadores = detectar_jugadores(df)
     t_inicio = df["Start time"].min()
+    if pd.isna(t_inicio):
+        return []  # export sin tiempos utilizables: no se pueden calcular minutos
     filas = []
     for jug in jugadores:
         sub = df[df["Row"] == jug]
+        sub = sub[sub["Start time"].notna()]
         if sub.empty:
             continue
         entrada_s = sub["Start time"].min()
@@ -681,8 +720,8 @@ def tabla_goles(df: pd.DataFrame) -> list:
             "remate": str(row.get("Remates") or "—"),
             "carril": str(row.get("Finalización") or "—"),
             # Para reproducir el video de la jugada: segundo exacto + partido
-            "t":       float(row["Start time"]) if pd.notna(row.get("Start time")) else None,
-            "duracion": float(row["Duration"]) if "Duration" in df.columns and pd.notna(row.get("Duration")) else None,
+            "t":       seg_num(row.get("Start time")),
+            "duracion": seg_num(row.get("Duration")) if "Duration" in df.columns else None,
             "partido": partido,
         })
     return sorted(goles, key=lambda x: x["minuto"])
@@ -1210,7 +1249,10 @@ def red_pases(dfs: list) -> dict:
         filas = []
         for _, r in sub.iterrows():
             u = str(r.get("Ungrouped") or "") if pd.notna(r.get("Ungrouped")) else ""
-            filas.append((float(r["Start time"]), str(r["Row"]), u))
+            t = seg_num(r.get("Start time"))
+            if t is None:
+                continue  # fila sin tiempo utilizable: no puede entrar en la secuencia
+            filas.append((t, str(r["Row"]), u))
 
         for i, (t, jug, tags) in enumerate(filas):
             if "PCompletos" not in tags:

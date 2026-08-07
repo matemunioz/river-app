@@ -292,7 +292,7 @@ def _coords_de_jugadores(dfs, jugadores):
                 "ye": float(r["y_end"]) if pd.notna(r.get("y_end")) else None,
                 "prog": bool(r.get("progresivo", False)),
                 "area": en_area,
-                "t":  float(r["Start time"]) if pd.notna(r.get("Start time")) else 0,
+                "t":  sc.seg_num(r.get("Start time")) or 0,
                 "duration": float(r["Duration"]) if "Duration" in df.columns and pd.notna(r.get("Duration")) else None,
                 "video":   str(video_raw) if pd.notna(video_raw) else None,
                 "tags":    str(r.get("Ungrouped") or "") if pd.notna(r.get("Ungrouped")) else "",
