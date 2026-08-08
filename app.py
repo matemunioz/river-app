@@ -9,9 +9,12 @@ from flask import Flask, jsonify, render_template, request, send_file
 import parser as sc
 import pdf_gen as pg
 import pdf_individual_v2 as pg_v2
+import biblioteca as bib
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
+# 25 MB alcanza de sobra: el CSV más pesado de un partido ronda los 130 KB.
+# Con 200 MB, un archivo grande arrastrado por error revienta la RAM del server.
+app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
 
 
 def leer_archivo(archivo):
@@ -37,18 +40,54 @@ def _aplicar_tiempo(df, req):
 
 
 def leer_todos(req):
-    """Devuelve lista de DataFrames a partir de uno o más uploads bajo 'archivo'."""
-    files = req.files.getlist("archivo")
-    if not files:
-        raise ValueError("No se recibió archivo")
+    """Lista de DataFrames del request. Dos fuentes, combinables:
+
+      · 'archivo'  → uploads (el analista arrastra un CSV suelto)
+      · 'partido'  → ids de la biblioteca (carpeta del área; el CSV nunca viaja
+                     por el navegador, que es lo que queremos para datos de menores)
+
+    Como todos los endpoints entran por acá, soportan las dos sin cambios.
+    """
     dfs = []
-    for f in files:
+
+    for pid in req.form.getlist("partido"):
+        try:
+            df = bib.leer_df(pid)
+        except FileNotFoundError as e:
+            raise ValueError(str(e))
+        if "Row" not in df.columns:
+            raise ValueError(f"El partido '{pid}' no tiene columna 'Row'. ¿Es un export de Sportcode?")
+        dfs.append(_aplicar_tiempo(df, req))
+
+    for f in req.files.getlist("archivo"):
         df = leer_archivo(f)
         if "Row" not in df.columns:
             raise ValueError(f"'{f.filename}' no tiene columna 'Row'. ¿Es un export de Sportcode?")
-        df = _aplicar_tiempo(df, req)
-        dfs.append(df)
+        dfs.append(_aplicar_tiempo(df, req))
+
+    if not dfs:
+        raise ValueError("No se recibió ningún partido")
     return dfs
+
+
+@app.route("/api/biblioteca", methods=["GET"])
+def api_biblioteca():
+    """Inventario de la carpeta del área: qué partidos hay para analizar.
+
+    Devuelve sólo metadatos (división, fecha, rival) — nunca el contenido del
+    CSV, que puede tener nombres de menores.
+    """
+    try:
+        return jsonify(bib.listar())
+    except Exception as e:
+        return jsonify({"disponible": False, "error": str(e), "partidos": []}), 500
+
+
+@app.route("/api/biblioteca/refrescar", methods=["POST"])
+def api_biblioteca_refrescar():
+    """Vuelve a leer la carpeta desde cero (tras agregar partidos nuevos)."""
+    bib.limpiar_cache()
+    return jsonify(bib.listar())
 
 
 @app.route("/")
