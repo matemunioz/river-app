@@ -333,6 +333,7 @@ def panel() -> dict:
         acc = divisiones.setdefault(d, {
             "division": d, "partidos": 0, "g": 0, "e": 0, "p": 0,
             "gf": 0, "gc": 0, "ultima_fecha": None, "forma": [], "ids": [],
+            "fechas": [],
         })
         acc["partidos"] += 1
         acc["ids"].append(p["id"])
@@ -342,12 +343,31 @@ def panel() -> dict:
             acc["gc"] += p["gc"] or 0
         if p["fecha"] is not None:
             acc["ultima_fecha"] = max(acc["ultima_fecha"] or 0, p["fecha"])
+            acc["fechas"].append(p["fecha"])
 
-    # Forma: los últimos 5 partidos por número de fecha
+    # ¿En qué fecha va el torneo? La más alta cargada en cualquier categoría.
+    fecha_torneo = max((f for a in divisiones.values() for f in a["fechas"]), default=0)
+
     for d, acc in divisiones.items():
         delDiv = sorted([q for q in partidos if (q["division"] or "otros") == d],
                         key=lambda q: q["fecha"] if q["fecha"] is not None else -1)
+        # Forma: los últimos 5 por número de fecha
         acc["forma"] = [q["resultado"] for q in delDiv[-5:] if q["resultado"]]
+        # Último partido JUGADO (fecha más alta), que no es lo mismo que el
+        # último archivo cargado.
+        ult = delDiv[-1] if delDiv else None
+        acc["ultimo_partido"] = ult
+        # Qué falta. Se distinguen dos casos, porque no significan lo mismo:
+        #   huecos     → fechas salteadas antes de la última cargada = se
+        #                olvidaron de subir ese partido
+        #   pendientes → fechas posteriores a la última cargada = todavía no
+        #                las subieron (probablemente recién jugadas)
+        tiene = set(acc["fechas"])
+        acc["fechas"] = sorted(tiene)
+        ultima = acc["ultima_fecha"] or 0
+        acc["huecos"] = [f for f in range(1, ultima) if f not in tiene]
+        acc["pendientes"] = [f for f in range(ultima + 1, fecha_torneo + 1)]
+        acc["faltan"] = len(acc["huecos"]) + len(acc["pendientes"])
 
     orden = {d: i for i, d in enumerate(_DIVISIONES)}
     divs = sorted(divisiones.values(), key=lambda a: orden.get(a["division"], 99))
@@ -355,7 +375,10 @@ def panel() -> dict:
     # Lo que entró último a la carpeta. OneDrive conserva la fecha de
     # modificación original de cada archivo, así que el mtime refleja de verdad
     # cuándo el videoanalista subió ese partido.
-    ultimos = sorted(partidos, key=lambda q: q["modificado"], reverse=True)[:8]
+    # Se devuelven bastantes porque el frontend filtra por grupo de videoanálisis
+    # (4ta-5ta-6ta / 7ma-8va-9na): si mandáramos sólo los últimos 8 globales,
+    # un grupo podría quedarse sin ninguno.
+    ultimos = sorted(partidos, key=lambda q: q["modificado"], reverse=True)[:40]
 
     return {"disponible": True, "carpeta": base, "total": len(partidos),
-            "divisiones": divs, "ultimos": ultimos}
+            "fecha_torneo": fecha_torneo, "divisiones": divs, "ultimos": ultimos}
