@@ -34,28 +34,75 @@ EXTS = (".csv", ".xlsx", ".xls")
 _DIVISIONES = ["4ta", "5ta", "6ta", "7ma", "8va", "9na", "reserva", "primera"]
 
 
+# Nombres de carpeta que reconocemos como biblioteca de partidos
+_PATRONES_CARPETA = ["Datos_Estadisticos_*", "Datos_estadisticos_*", "datos_estadisticos_*"]
+
+# Dónde buscar, en orden de preferencia. La sincronizada de OneDrive gana sobre
+# la copia local, así que apenas el analista sincroniza la carpeta del área la
+# app pasa a leer la de verdad sin tocar nada.
+_BASES = [
+    "Library/CloudStorage/OneDrive-*",           # OneDrive corporativo (macOS)
+    "Library/CloudStorage/OneDrive-*/*",         # dentro de una subcarpeta
+    "Library/CloudStorage/OneDrive-*/*/*",
+    "Library/CloudStorage/SharePoint-*",         # bibliotecas de sitio sincronizadas
+    "Library/CloudStorage/SharePoint-*/*",
+    "OneDrive*",                                 # sync viejo, fuera de CloudStorage
+    "OneDrive*/*",
+    "Library/Mobile Documents/com~apple~CloudDocs",  # iCloud
+    "RiverData",                                 # copia local
+    "Documents",
+    "Desktop",
+]
+
+
 def _candidatos_raiz() -> list:
     """Rutas donde puede estar la carpeta de datos, en orden de preferencia."""
     env = os.environ.get("RIVER_BIBLIOTECA_DIR")
     if env:
-        return [env]
+        return [os.path.expanduser(env)]
     home = os.path.expanduser("~")
     cands = []
-    # OneDrive / SharePoint sincronizado por el cliente de escritorio
-    cands += sorted(glob(os.path.join(home, "Library/CloudStorage/OneDrive-*/Datos_Estadisticos_*")))
-    cands += sorted(glob(os.path.join(home, "Library/CloudStorage/OneDrive-*/*/Datos_Estadisticos_*")))
-    cands += sorted(glob(os.path.join(home, "OneDrive*/Datos_Estadisticos_*")))
-    # Copia local
-    cands += sorted(glob(os.path.join(home, "RiverData/Datos_Estadisticos_*")))
-    return cands
+    for base in _BASES:
+        for pat in _PATRONES_CARPETA:
+            cands += sorted(glob(os.path.join(home, base, pat)))
+    # sin duplicados, conservando el orden de preferencia
+    vistos, unicos = set(), []
+    for c in cands:
+        real = os.path.realpath(c)
+        if real not in vistos:
+            vistos.add(real)
+            unicos.append(c)
+    return unicos
+
+
+def _tiene_partidos(d: str) -> bool:
+    """La carpeta sirve si tiene al menos un CSV/XLSX en ella o en sus subcarpetas."""
+    for dirpath, _dirs, files in os.walk(d):
+        if any(f.lower().endswith(EXTS) and not f.startswith(".") for f in files):
+            return True
+    return False
 
 
 def raiz() -> str | None:
     """Carpeta activa de la biblioteca, o None si no hay ninguna disponible."""
+    primero_existente = None
     for c in _candidatos_raiz():
         if c and os.path.isdir(c):
-            return c
-    return None
+            if _tiene_partidos(c):
+                return c
+            primero_existente = primero_existente or c
+    # Existe pero está vacía (p. ej. OneDrive recién sincronizado): la devolvemos
+    # igual para que la UI muestre la ruta y no un "no encuentro nada".
+    return primero_existente
+
+
+def diagnostico() -> dict:
+    """Qué carpetas se probaron — para explicar en la UI por qué no encuentra."""
+    return {
+        "env": os.environ.get("RIVER_BIBLIOTECA_DIR"),
+        "candidatos": [{"ruta": c, "existe": os.path.isdir(c)} for c in _candidatos_raiz()],
+        "elegida": raiz(),
+    }
 
 
 def _norm(s: str) -> str:
@@ -108,7 +155,8 @@ def listar(base: str | None = None) -> dict:
     """Inventario de la carpeta: partidos disponibles, agrupables por división."""
     base = base or raiz()
     if not base:
-        return {"disponible": False, "carpeta": None, "partidos": []}
+        return {"disponible": False, "carpeta": None, "partidos": [],
+                "diagnostico": diagnostico()}
 
     partidos = []
     for dirpath, _dirs, files in os.walk(base):
