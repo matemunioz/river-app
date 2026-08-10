@@ -192,17 +192,36 @@ def listar(base: str | None = None) -> dict:
     return {"disponible": True, "carpeta": base, "partidos": partidos}
 
 
+# Índice id → ruta relativa. Sin esto, resolver N partidos hacía N recorridos
+# completos de la carpeta (sobre OneDrive eso son cientos de ms cada uno).
+_INDICE: dict = {}
+_INDICE_BASE: str | None = None
+
+
+def _indice(base: str) -> dict:
+    global _INDICE, _INDICE_BASE
+    if _INDICE_BASE != base or not _INDICE:
+        _INDICE = {p["id"]: p["archivo"] for p in listar(base)["partidos"]}
+        _INDICE_BASE = base
+    return _INDICE
+
+
 def _ruta_de_id(pid: str, base: str | None = None) -> str | None:
     base = base or raiz()
     if not base:
         return None
-    for p in listar(base)["partidos"]:
-        if p["id"] == pid:
-            full = os.path.realpath(os.path.join(base, p["archivo"]))
-            # Defensa: nunca salir de la carpeta configurada
-            if full.startswith(os.path.realpath(base) + os.sep):
-                return full
-    return None
+    rel = _indice(base).get(pid)
+    if rel is None:
+        # puede ser un partido agregado después de armar el índice
+        _INDICE.clear()
+        rel = _indice(base).get(pid)
+        if rel is None:
+            return None
+    full = os.path.realpath(os.path.join(base, rel))
+    # Defensa: nunca salir de la carpeta configurada
+    if not full.startswith(os.path.realpath(base) + os.sep):
+        return None
+    return full
 
 
 # ─── Caché de DataFrames ya enriquecidos ─────────────────────────────────────
@@ -240,3 +259,103 @@ def leer_df(pid: str, base: str | None = None) -> pd.DataFrame:
 
 def limpiar_cache() -> None:
     _CACHE.clear()
+    _RESUMEN.clear()
+    _INDICE.clear()
+
+
+# ─── Resumen rápido por partido (para el panel principal) ────────────────────
+# Sólo el resultado: no hace falta enriquecer el DataFrame ni calcular nada más.
+# Se lee con el módulo csv (mucho más liviano que pandas para esto) y se cachea
+# por (ruta, mtime, tamaño), así al abrir el panel la segunda vez es inmediato.
+
+_RESUMEN: dict = {}
+
+
+def resumen_partido(pid: str, base: str | None = None) -> dict | None:
+    """{gf, gc, resultado} de un partido, leyendo sólo la columna Row."""
+    full = _ruta_de_id(pid, base)
+    if not full or not os.path.isfile(full):
+        return None
+    k = _clave(full)
+    if k in _RESUMEN:
+        return _RESUMEN[k]
+
+    gf = gc = 0
+    ext = os.path.splitext(full)[1].lower()
+    try:
+        if ext == ".csv":
+            import csv
+            with open(full, newline="", encoding="utf-8", errors="replace") as fh:
+                r = csv.reader(fh)
+                hdr = next(r, None)
+                if hdr is None:
+                    return None
+                try:
+                    i_row = hdr.index("Row")
+                except ValueError:
+                    return None
+                for fila in r:
+                    if len(fila) > i_row:
+                        v = fila[i_row]
+                        if v == "Goles Propios":
+                            gf += 1
+                        elif v == "Goles Rivales":
+                            gc += 1
+        else:
+            df = pd.read_excel(full, usecols=["Row"])
+            gf = int((df["Row"] == "Goles Propios").sum())
+            gc = int((df["Row"] == "Goles Rivales").sum())
+    except Exception:
+        return None
+
+    out = {"gf": gf, "gc": gc,
+           "resultado": "G" if gf > gc else "P" if gf < gc else "E"}
+    _RESUMEN[k] = out
+    return out
+
+
+def panel() -> dict:
+    """Resumen de toda la biblioteca para la pantalla principal: por división,
+    registro (G-E-P), goles, forma reciente y última fecha con datos."""
+    inv = listar()
+    if not inv["disponible"]:
+        return {**inv, "divisiones": [], "ultimos": []}
+
+    base = inv["carpeta"]
+    partidos = []
+    for p in inv["partidos"]:
+        r = resumen_partido(p["id"], base)
+        partidos.append({**p, **(r or {"gf": None, "gc": None, "resultado": None})})
+
+    divisiones = {}
+    for p in partidos:
+        d = p["division"] or "otros"
+        acc = divisiones.setdefault(d, {
+            "division": d, "partidos": 0, "g": 0, "e": 0, "p": 0,
+            "gf": 0, "gc": 0, "ultima_fecha": None, "forma": [], "ids": [],
+        })
+        acc["partidos"] += 1
+        acc["ids"].append(p["id"])
+        if p["resultado"]:
+            acc["g" if p["resultado"] == "G" else "e" if p["resultado"] == "E" else "p"] += 1
+            acc["gf"] += p["gf"] or 0
+            acc["gc"] += p["gc"] or 0
+        if p["fecha"] is not None:
+            acc["ultima_fecha"] = max(acc["ultima_fecha"] or 0, p["fecha"])
+
+    # Forma: los últimos 5 partidos por número de fecha
+    for d, acc in divisiones.items():
+        delDiv = sorted([q for q in partidos if (q["division"] or "otros") == d],
+                        key=lambda q: q["fecha"] if q["fecha"] is not None else -1)
+        acc["forma"] = [q["resultado"] for q in delDiv[-5:] if q["resultado"]]
+
+    orden = {d: i for i, d in enumerate(_DIVISIONES)}
+    divs = sorted(divisiones.values(), key=lambda a: orden.get(a["division"], 99))
+
+    # Lo que entró último a la carpeta. OneDrive conserva la fecha de
+    # modificación original de cada archivo, así que el mtime refleja de verdad
+    # cuándo el videoanalista subió ese partido.
+    ultimos = sorted(partidos, key=lambda q: q["modificado"], reverse=True)[:8]
+
+    return {"disponible": True, "carpeta": base, "total": len(partidos),
+            "divisiones": divs, "ultimos": ultimos}

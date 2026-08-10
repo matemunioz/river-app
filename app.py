@@ -83,6 +83,18 @@ def api_biblioteca():
         return jsonify({"disponible": False, "error": str(e), "partidos": []}), 500
 
 
+@app.route("/api/panel", methods=["GET"])
+def api_panel():
+    """Resumen de toda la biblioteca para la pantalla principal: registro por
+    división, forma reciente y últimos partidos cargados. Lee sólo la columna
+    con el tipo de fila, así que es barato aun con 90+ partidos."""
+    try:
+        return jsonify(bib.panel())
+    except Exception as e:
+        return jsonify({"disponible": False, "error": str(e),
+                        "divisiones": [], "ultimos": []}), 500
+
+
 @app.route("/api/biblioteca/refrescar", methods=["POST"])
 def api_biblioteca_refrescar():
     """Vuelve a leer la carpeta desde cero (tras agregar partidos nuevos)."""
