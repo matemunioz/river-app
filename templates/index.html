@@ -1324,7 +1324,8 @@ function renderResultados(d) {
     if (!puntos.length) {
       return `<p style="font-size:11px;color:var(--gris5);padding:8px 0">Sin remates ${esProp ? 'propios' : 'rivales'} con coordenadas.</p>`;
     }
-    const COL = { gol: null, arco: '#3ecf8e', afuera: '#CC0000', bloqueado: '#f5a623', sin_dato: '#6b6b6b' };
+    const COL = { gol: null, arco: '#3ecf8e', afuera: '#CC0000', bloqueado: '#f5a623',
+                  incompleto: '#5a5a5a', sin_dato: '#6b6b6b' };
     // viewBox 0-60 en x: para los propios se traslada la mitad de ataque (x 60-120)
     let svg = `<svg viewBox="0 0 60 80" style="width:100%;max-width:340px;height:auto;background:#141414;border-radius:6px;display:block;margin:6px auto">`;
     svg += `<rect x="0.5" y="0.5" width="59" height="79" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
@@ -1342,8 +1343,10 @@ function renderResultados(d) {
       svg += `<text x="57" y="77" fill="#666" font-size="3" text-anchor="end">← atacan ellos</text>`;
     }
     const ETIQ = { gol: 'Gol', arco: 'Remate al arco', bloqueado: 'Remate bloqueado',
-                   afuera: 'Remate afuera', sin_dato: 'Llegada sin remate registrado' };
-    let hayGris = 0;
+                   afuera: 'Remate afuera',
+                   incompleto: 'Llegada sin remate (incompleta)',
+                   sin_dato: 'Llegada sin resultado cargado' };
+    let hayGris = 0, hayIncompleto = 0;
     puntos.forEach(p => {
       // propios: x viene 60-120 (mitad de ataque) → se lleva a 0-60 del viewBox
       const xRaw = esProp ? p[0] - 60 : p[0];
@@ -1351,6 +1354,7 @@ function renderResultados(d) {
       const y = 80 - Math.min(79, Math.max(1, p[1]));  // flip vertical como el resto de los mapas
       const res = COL.hasOwnProperty(p[2]) || p[2] === 'gol' ? p[2] : 'sin_dato';
       if (res === 'sin_dato') hayGris++;
+      if (res === 'incompleto') hayIncompleto++;
       // Tooltip: qué fue, cuándo y de qué jugada salió
       const partes = [ (res === 'gol' && !esProp) ? 'Gol rival' : ETIQ[res] ];
       if (p[3] != null) partes.push(`${Math.floor(p[3] / 60)}'${String(Math.floor(p[3] % 60)).padStart(2,'0')}"`);
@@ -1372,11 +1376,15 @@ function renderResultados(d) {
       <span style="color:#3ecf8e">● Al arco</span>
       <span style="color:#f5a623">● Bloqueado</span>
       <span style="color:#CC0000">● Afuera</span>
-      ${hayGris ? `<span style="color:#6b6b6b">● Sin remate registrado</span>` : ''}
+      ${hayIncompleto ? `<span style="color:#5a5a5a">● Llegada sin remate</span>` : ''}
+      ${hayGris ? `<span style="color:#6b6b6b">● Sin resultado cargado</span>` : ''}
     </div>`;
-    if (hayGris) {
+    if (hayGris || hayIncompleto) {
+      const partes = [];
+      if (hayIncompleto) partes.push(`${hayIncompleto} llegada(s) que no terminaron en remate`);
+      if (hayGris) partes.push(`${hayGris} sin el resultado taggeado`);
       svg += `<div style="font-size:9.5px;color:var(--gris5);text-align:center;margin-top:4px;line-height:1.4">
-        ${hayGris} llegada(s) sin resultado de remate taggeado — no se cuentan como remate.
+        ${partes.join(' · ')} — no se cuentan como remate.
       </div>`;
     }
     return svg;
@@ -1384,22 +1392,32 @@ function renderResultados(d) {
 
   // Resumen de un set de remates: total, al arco y efectividad — para leer los
   // dos mapas comparándolos, no como dos dibujos sueltos.
-  function resumenRemates(puntos) {
-    if (!puntos.length) return '';
-    // Las llegadas sin resultado taggeado NO son un remate confirmado: quedan
-    // fuera del total y del % al arco para no ensuciar la lectura.
-    const remates = puntos.filter(p => p[2] !== 'sin_dato');
-    const n = remates.length;
+  // Resumen que va debajo de cada mapa. Los números salen de la ESTADÍSTICA
+  // COLECTIVA (llegadas_prop / llegadas_riv), no de contar los puntos dibujados:
+  // las llegadas sin coordenadas no se pueden dibujar pero sí son remates, así
+  // que contando puntos el resumen no coincidía con el resto del panel.
+  function resumenRemates(det, puntos) {
+    if (!det) return '';
+    const arco = det.tiros_arco || 0;      // en el tagging, un gol también es "Arco"
+    const goles = det.goles || 0;
+    const n = arco + (det.afuera || 0) + (det.bloqueado || 0);
     if (!n) return '';
-    const goles = remates.filter(p => p[2] === 'gol').length;
-    const arco  = remates.filter(p => p[2] === 'arco').length + goles;   // el gol también va al arco
     const pctArco = Math.round(arco / n * 100);
     const colArco = pctArco >= 50 ? 'green' : pctArco >= 30 ? 'amber' : '';
-    return `<div class="mini-grid" style="grid-template-columns:repeat(3,1fr);margin-top:6px">
+    let html = `<div class="mini-grid" style="grid-template-columns:repeat(3,1fr);margin-top:6px">
       ${miniCard('Remates', n)}
       ${miniCard('Al arco', `${arco} (${pctArco}%)`, colArco)}
       ${miniCard('Goles', goles, goles ? 'green' : '')}
     </div>`;
+    // Si hay remates que no se pueden ubicar en la cancha, decirlo: si no, el
+    // que cuenta los puntos del mapa ve menos de los que informa el resumen.
+    const dibujados = (puntos || []).filter(p => p[2] !== 'sin_dato' && p[2] !== 'incompleto').length;
+    if (dibujados < n) {
+      html += `<div style="font-size:9.5px;color:var(--gris5);text-align:center;margin-top:4px">
+        ${n - dibujados} remate(s) sin coordenadas: no se pueden ubicar en la cancha.
+      </div>`;
+    }
+    return html;
   }
 
   // Jugadores select
@@ -1656,12 +1674,12 @@ function renderResultados(d) {
         <div class="panel-card">
           <div class="sec-title">River · Remates propios</div>
           ${mapaRemates(col.remates_prop_puntos || [], 'prop')}
-          ${resumenRemates(col.remates_prop_puntos || [])}
+          ${resumenRemates(col.llegadas_prop, col.remates_prop_puntos || [])}
         </div>
         <div class="panel-card">
           <div class="sec-title red">Rival · Remates recibidos</div>
           ${mapaRemates(col.remates_riv_puntos || [], 'riv')}
-          ${resumenRemates(col.remates_riv_puntos || [])}
+          ${resumenRemates(col.llegadas_riv, col.remates_riv_puntos || [])}
         </div>
       </div>
     </div>

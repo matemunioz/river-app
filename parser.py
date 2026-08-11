@@ -426,14 +426,15 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
         for _, r in _ll.iterrows():
             rem = str(r.get("Remates") or "") if "Remates" in df.columns and pd.notna(r.get("Remates")) else ""
             # Resultado más específico primero ("Gol, Arco" y "Arco, Gol" → gol).
-            # "sin_dato" = la llegada no tiene resultado de remate taggeado: puede
-            # ser que no haya terminado en remate o que falte el tag. No se cuenta
-            # como remate en los resúmenes.
-            if "Gol" in rem:         res = "gol"
-            elif "Arco" in rem:      res = "arco"
-            elif "Bloqueado" in rem: res = "bloqueado"
-            elif "Afuera" in rem:    res = "afuera"
-            else:                    res = "sin_dato"
+            # Dos casos que NO son un remate y por eso no entran en los totales:
+            #   "incompleto" → el analista marcó que la jugada no llegó a rematarse
+            #   "sin_dato"   → la columna Remates quedó vacía: falta el tag
+            if "Gol" in rem:          res = "gol"
+            elif "Arco" in rem:       res = "arco"
+            elif "Bloqueado" in rem:  res = "bloqueado"
+            elif "Afuera" in rem:     res = "afuera"
+            elif "Incompleto" in rem: res = "incompleto"
+            else:                     res = "sin_dato"
             rx, ry = coord_remate(r)
             t = _seg(r)
             tipo, carril = _ctx(r)
