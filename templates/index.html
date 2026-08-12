@@ -1392,29 +1392,47 @@ function renderResultados(d) {
 
   // Resumen de un set de remates: total, al arco y efectividad — para leer los
   // dos mapas comparándolos, no como dos dibujos sueltos.
-  // Resumen que va debajo de cada mapa. Los números salen de la ESTADÍSTICA
-  // COLECTIVA (llegadas_prop / llegadas_riv), no de contar los puntos dibujados:
-  // las llegadas sin coordenadas no se pueden dibujar pero sí son remates, así
-  // que contando puntos el resumen no coincidía con el resto del panel.
-  function resumenRemates(det, puntos) {
+  // Resumen que va debajo de cada mapa. Usa EXACTAMENTE las mismas fuentes que
+  // el resto del panel, para que los números coincidan:
+  //   · Goles   → categoría "Goles Propios"/"Goles Rivales" (el marcador)
+  //   · Resto   → llegadas_prop / llegadas_riv
+  // Contar los puntos dibujados daría otro número, porque las llegadas sin
+  // coordenadas son remates igual pero no se pueden ubicar en la cancha.
+  function resumenRemates(det, golesDet, puntos) {
     if (!det) return '';
-    const arco = det.tiros_arco || 0;      // en el tagging, un gol también es "Arco"
-    const goles = det.goles || 0;
+    const arco  = det.tiros_arco || 0;                 // en el tagging, un gol también es "Arco"
+    const goles = (golesDet && golesDet.total) || 0;   // marcador real
     const n = arco + (det.afuera || 0) + (det.bloqueado || 0);
-    if (!n) return '';
-    const pctArco = Math.round(arco / n * 100);
+    if (!n && !goles) return '';
+    const pctArco = n ? Math.round(arco / n * 100) : 0;
     const colArco = pctArco >= 50 ? 'green' : pctArco >= 30 ? 'amber' : '';
     let html = `<div class="mini-grid" style="grid-template-columns:repeat(3,1fr);margin-top:6px">
       ${miniCard('Remates', n)}
       ${miniCard('Al arco', `${arco} (${pctArco}%)`, colArco)}
       ${miniCard('Goles', goles, goles ? 'green' : '')}
     </div>`;
-    // Si hay remates que no se pueden ubicar en la cancha, decirlo: si no, el
-    // que cuenta los puntos del mapa ve menos de los que informa el resumen.
-    const dibujados = (puntos || []).filter(p => p[2] !== 'sin_dato' && p[2] !== 'incompleto').length;
-    if (dibujados < n) {
-      html += `<div style="font-size:9.5px;color:var(--gris5);text-align:center;margin-top:4px">
-        ${n - dibujados} remate(s) sin coordenadas: no se pueden ubicar en la cancha.
+
+    const avisos = [];
+    // Goles que no se pueden ubicar en la cancha (ni el gol ni su llegada
+    // tienen coordenadas): explica por qué se cuentan menos pelotitas.
+    const golesDibujados = (puntos || []).filter(p => p[2] === 'gol').length;
+    if (goles > golesDibujados) {
+      avisos.push(`${goles - golesDibujados} gol(es) sin coordenadas`);
+    }
+    // Remates sin ubicar (no goles)
+    const remDibujados = (puntos || []).filter(p => p[2] !== 'sin_dato' && p[2] !== 'incompleto').length;
+    if (remDibujados < n) {
+      avisos.push(`${n - remDibujados} remate(s) sin ubicar en la cancha`);
+    }
+    // Goles cuya LLEGADA no quedó taggeada como gol: es un error de tagging que
+    // conviene corregir, porque desalinea el mapa del marcador.
+    const golesEnLlegadas = det.goles || 0;
+    if (goles > golesEnLlegadas) {
+      avisos.push(`${goles - golesEnLlegadas} gol(es) sin marcar en su llegada`);
+    }
+    if (avisos.length) {
+      html += `<div style="font-size:9.5px;color:var(--gris5);text-align:center;margin-top:4px;line-height:1.45">
+        ${avisos.join(' · ')}
       </div>`;
     }
     return html;
@@ -1674,12 +1692,12 @@ function renderResultados(d) {
         <div class="panel-card">
           <div class="sec-title">River · Remates propios</div>
           ${mapaRemates(col.remates_prop_puntos || [], 'prop')}
-          ${resumenRemates(col.llegadas_prop, col.remates_prop_puntos || [])}
+          ${resumenRemates(col.llegadas_prop, col.goles_propios, col.remates_prop_puntos || [])}
         </div>
         <div class="panel-card">
           <div class="sec-title red">Rival · Remates recibidos</div>
           ${mapaRemates(col.remates_riv_puntos || [], 'riv')}
-          ${resumenRemates(col.llegadas_riv, col.remates_riv_puntos || [])}
+          ${resumenRemates(col.llegadas_riv, col.goles_rivales, col.remates_riv_puntos || [])}
         </div>
       </div>
     </div>
