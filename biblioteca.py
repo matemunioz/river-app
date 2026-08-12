@@ -27,6 +27,7 @@ from glob import glob
 import pandas as pd
 
 import parser as sc
+import fixture as fx
 
 EXTS = (".csv", ".xlsx", ".xls")
 
@@ -272,7 +273,11 @@ _RESUMEN: dict = {}
 
 
 def resumen_partido(pid: str, base: str | None = None) -> dict | None:
-    """{gf, gc, resultado} de un partido, leyendo sólo la columna Row."""
+    """{gf, gc, sit_gol, sit_gol_riv, resultado} de un partido.
+
+    Lee sólo la columna con el tipo de fila: alcanza para el resultado y para
+    las situaciones de gol, y es mucho más barato que levantar el CSV entero.
+    """
     full = _ruta_de_id(pid, base)
     if not full or not os.path.isfile(full):
         return None
@@ -280,7 +285,7 @@ def resumen_partido(pid: str, base: str | None = None) -> dict | None:
     if k in _RESUMEN:
         return _RESUMEN[k]
 
-    gf = gc = 0
+    gf = gc = sg = sgr = 0
     ext = os.path.splitext(full)[1].lower()
     try:
         if ext == ".csv":
@@ -297,19 +302,24 @@ def resumen_partido(pid: str, base: str | None = None) -> dict | None:
                 for fila in r:
                     if len(fila) > i_row:
                         v = fila[i_row]
-                        if v == "Goles Propios":
-                            gf += 1
-                        elif v == "Goles Rivales":
-                            gc += 1
+                        if v == "Goles Propios":            gf += 1
+                        elif v == "Goles Rivales":          gc += 1
+                        elif v == "Situaciones de Gol Propias": sg += 1
+                        elif v == "Situaciones de Gol Rival":   sgr += 1
         else:
             df = pd.read_excel(full, usecols=["Row"])
-            gf = int((df["Row"] == "Goles Propios").sum())
-            gc = int((df["Row"] == "Goles Rivales").sum())
+            col = df["Row"]
+            gf = int((col == "Goles Propios").sum())
+            gc = int((col == "Goles Rivales").sum())
+            sg = int((col == "Situaciones de Gol Propias").sum())
+            sgr = int((col == "Situaciones de Gol Rival").sum())
     except Exception:
         return None
 
-    out = {"gf": gf, "gc": gc,
-           "resultado": "G" if gf > gc else "P" if gf < gc else "E"}
+    res = "G" if gf > gc else "P" if gf < gc else "E"
+    out = {"gf": gf, "gc": gc, "sit_gol": sg, "sit_gol_riv": sgr,
+           "puntos": 3 if res == "G" else 1 if res == "E" else 0,
+           "resultado": res}
     _RESUMEN[k] = out
     return out
 
@@ -345,8 +355,9 @@ def panel() -> dict:
             acc["ultima_fecha"] = max(acc["ultima_fecha"] or 0, p["fecha"])
             acc["fechas"].append(p["fecha"])
 
-    # ¿En qué fecha va el torneo? La más alta cargada en cualquier categoría.
-    fecha_torneo = max((f for a in divisiones.values() for f in a["fechas"]), default=0)
+    # Dónde está parado el torneo hoy, según el calendario oficial.
+    est = fx.estado()
+    fecha_torneo = (est["ultima_jugada"] or {}).get("fecha", 0)
 
     for d, acc in divisiones.items():
         delDiv = sorted([q for q in partidos if (q["division"] or "otros") == d],
@@ -357,17 +368,45 @@ def panel() -> dict:
         # último archivo cargado.
         ult = delDiv[-1] if delDiv else None
         acc["ultimo_partido"] = ult
-        # Qué falta. Se distinguen dos casos, porque no significan lo mismo:
-        #   huecos     → fechas salteadas antes de la última cargada = se
-        #                olvidaron de subir ese partido
-        #   pendientes → fechas posteriores a la última cargada = todavía no
-        #                las subieron (probablemente recién jugadas)
-        tiene = set(acc["fechas"])
-        acc["fechas"] = sorted(tiene)
-        ultima = acc["ultima_fecha"] or 0
-        acc["huecos"] = [f for f in range(1, ultima) if f not in tiene]
-        acc["pendientes"] = [f for f in range(ultima + 1, fecha_torneo + 1)]
-        acc["faltan"] = len(acc["huecos"]) + len(acc["pendientes"])
+        acc["fechas"] = sorted(set(acc["fechas"]))
+
+        # Qué falta cargar, contra el FIXTURE oficial y comparando por rival:
+        # los archivos vienen numerados sin la fecha suspendida, así que el
+        # número propio no sirve para saber qué partido es.
+        pend = fx.faltantes([q["rival"] for q in delDiv])
+        acc["faltantes"] = pend
+        acc["faltan"] = len(pend)
+        # Fecha del fixture del último partido que sí está cargado
+        ultima_fx = max((fx.fecha_de_rival(q["rival"]) or 0 for q in delDiv), default=0)
+        acc["ultima_fecha_fixture"] = ultima_fx or None
+        # Un faltante anterior al último cargado es un salteo (se lo pasaron por
+        # alto); uno posterior es simplemente que todavía no lo subieron.
+        acc["huecos"] = [p["fecha"] for p in pend if p["fecha"] < ultima_fx]
+        acc["pendientes"] = [p["fecha"] for p in pend if p["fecha"] > ultima_fx]
+
+        # Serie fecha a fecha para el gráfico de evolución. Se ordena por la
+        # fecha del FIXTURE (no por el número del archivo) y se acumula, así se
+        # ve la curva de la campaña. Las fechas sin cargar cortan la línea.
+        serie = []
+        acum = {"puntos": 0, "goles": 0, "goles_contra": 0, "sit_gol": 0, "sit_gol_riv": 0}
+        porFecha = {}
+        for q in delDiv:
+            f = fx.fecha_de_rival(q["rival"])
+            if f:
+                porFecha[f] = q
+        for f in sorted(porFecha):
+            q = porFecha[f]
+            acum["puntos"] += q.get("puntos") or 0
+            acum["goles"] += q.get("gf") or 0
+            acum["goles_contra"] += q.get("gc") or 0
+            acum["sit_gol"] += q.get("sit_gol") or 0
+            acum["sit_gol_riv"] += q.get("sit_gol_riv") or 0
+            serie.append({
+                "fecha": f, "rival": q["rival"], "resultado": q["resultado"],
+                "gf": q.get("gf"), "gc": q.get("gc"),
+                **{k: v for k, v in acum.items()},
+            })
+        acc["serie"] = serie
 
     orden = {d: i for i, d in enumerate(_DIVISIONES)}
     divs = sorted(divisiones.values(), key=lambda a: orden.get(a["division"], 99))
@@ -381,4 +420,5 @@ def panel() -> dict:
     ultimos = sorted(partidos, key=lambda q: q["modificado"], reverse=True)[:40]
 
     return {"disponible": True, "carpeta": base, "total": len(partidos),
-            "fecha_torneo": fecha_torneo, "divisiones": divs, "ultimos": ultimos}
+            "fecha_torneo": fecha_torneo, "torneo": est,
+            "divisiones": divs, "ultimos": ultimos}
