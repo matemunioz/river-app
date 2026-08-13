@@ -1340,32 +1340,47 @@ function renderResultados(d) {
     // viewBox 0-60 en x: para los propios se traslada la mitad de ataque (x 60-120)
     let svg = `<svg viewBox="0 0 60 80" style="width:100%;max-width:340px;height:auto;background:#141414;border-radius:6px;display:block;margin:6px auto">`;
     svg += `<rect x="0.5" y="0.5" width="59" height="79" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
+    // Medidas reglamentarias (cancha 105×68) llevadas a la grilla de 120×80 en
+    // la que vienen las coordenadas: x ×1.1429, y ×1.1765.
+    //   área grande 16,5×40,32 m → 18,9 × 47,4   (y de 16,3 a 63,7)
+    //   área chica   5,5×18,32 m →  6,3 × 21,6   (y de 29,2 a 50,8)
+    //   semicírculo del área: 9,15 m de radio → 10,5
+    const AG_W = 18.9, AG_Y = 16.3, AG_H = 47.4;
+    const AC_W = 6.3,  AC_Y = 29.2, AC_H = 21.6;
+    const ARCO_R = 10.5, ARCO_Y0 = 33.6, ARCO_Y1 = 46.4;  // cuerda del semicírculo
     if (esProp) {
       // arco rival a la derecha
-      svg += `<rect x="42" y="18" width="18" height="44" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
-      svg += `<rect x="54" y="30" width="6" height="20" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
-      svg += `<path d="M 42 33.5 A 9.15 9.15 0 0 1 42 46.5" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
+      svg += `<rect x="${60-AG_W}" y="${AG_Y}" width="${AG_W}" height="${AG_H}" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
+      svg += `<rect x="${60-AC_W}" y="${AC_Y}" width="${AC_W}" height="${AC_H}" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
+      svg += `<path d="M ${60-AG_W} ${ARCO_Y0} A ${ARCO_R} ${ARCO_R} 0 0 1 ${60-AG_W} ${ARCO_Y1}" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
+      svg += `<circle cx="${60-12.6}" cy="40" r="0.5" fill="#3a3a3a"/>`;
       svg += `<text x="3" y="77" fill="#666" font-size="3">atacamos →</text>`;
     } else {
       // nuestro arco a la izquierda
-      svg += `<rect x="0" y="18" width="18" height="44" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
-      svg += `<rect x="0" y="30" width="6" height="20" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
-      svg += `<path d="M 18 33.5 A 9.15 9.15 0 0 0 18 46.5" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
+      svg += `<rect x="0" y="${AG_Y}" width="${AG_W}" height="${AG_H}" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
+      svg += `<rect x="0" y="${AC_Y}" width="${AC_W}" height="${AC_H}" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
+      svg += `<path d="M ${AG_W} ${ARCO_Y0} A ${ARCO_R} ${ARCO_R} 0 0 0 ${AG_W} ${ARCO_Y1}" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
+      svg += `<circle cx="12.6" cy="40" r="0.5" fill="#3a3a3a"/>`;
       svg += `<text x="57" y="77" fill="#666" font-size="3" text-anchor="end">← atacan ellos</text>`;
     }
     const ETIQ = { gol: 'Gol', arco: 'Remate al arco', bloqueado: 'Remate bloqueado',
                    afuera: 'Remate afuera',
                    incompleto: 'Llegada sin remate (incompleta)',
                    sin_dato: 'Llegada sin resultado cargado' };
+    // Sólo se dibujan REMATES. Las llegadas que no terminaron en remate y las
+    // que quedaron sin resultado taggeado se cuentan aparte y se avisan abajo,
+    // pero no van a la cancha: no son remates y ensuciaban el mapa.
     let hayGris = 0, hayIncompleto = 0;
-    puntos.forEach(p => {
+    puntos.filter(p => {
+      if (p[2] === 'sin_dato')   { hayGris++;        return false; }
+      if (p[2] === 'incompleto') { hayIncompleto++;  return false; }
+      return true;
+    }).forEach(p => {
       // propios: x viene 60-120 (mitad de ataque) → se lleva a 0-60 del viewBox
       const xRaw = esProp ? p[0] - 60 : p[0];
       const x = Math.min(59, Math.max(1, xRaw));
       const y = 80 - Math.min(79, Math.max(1, p[1]));  // flip vertical como el resto de los mapas
-      const res = COL.hasOwnProperty(p[2]) || p[2] === 'gol' ? p[2] : 'sin_dato';
-      if (res === 'sin_dato') hayGris++;
-      if (res === 'incompleto') hayIncompleto++;
+      const res = p[2];
       // Tooltip con toda la data del remate: qué fue, contra quién, cuándo y de
       // qué jugada salió. El rival sale de la biblioteca (p[7]); si el archivo
       // se subió a mano, se extrae del nombre del partido del propio export.
@@ -1382,7 +1397,7 @@ function renderResultados(d) {
       } else {
         svg += `<g data-pitch-tip="${tip}" style="cursor:help">` +
                `<circle cx="${x}" cy="${y}" r="3" fill="transparent"/>` +
-               `<circle cx="${x}" cy="${y}" r="1.4" fill="${COL[res]}" opacity="${res === 'sin_dato' ? 0.6 : 0.9}"/></g>`;
+               `<circle cx="${x}" cy="${y}" r="1.4" fill="${COL[res] || COL.arco}" opacity="0.9"/></g>`;
       }
     });
     svg += `</svg>`;
@@ -1391,15 +1406,15 @@ function renderResultados(d) {
       <span style="color:#3ecf8e">● Al arco</span>
       <span style="color:#f5a623">● Bloqueado</span>
       <span style="color:#CC0000">● Afuera</span>
-      ${hayIncompleto ? `<span style="color:#5a5a5a">● Llegada sin remate</span>` : ''}
-      ${hayGris ? `<span style="color:#6b6b6b">● Sin resultado cargado</span>` : ''}
     </div>`;
+    // Las llegadas que no son remate no se dibujan. Se informan igual, para que
+    // el conteo de puntos del mapa cierre con el total de llegadas del panel.
     if (hayGris || hayIncompleto) {
       const partes = [];
-      if (hayIncompleto) partes.push(`${hayIncompleto} llegada(s) que no terminaron en remate`);
-      if (hayGris) partes.push(`${hayGris} sin el resultado taggeado`);
+      if (hayIncompleto) partes.push(`${hayIncompleto} llegada(s) sin remate`);
+      if (hayGris) partes.push(`${hayGris} sin resultado taggeado`);
       svg += `<div style="font-size:9.5px;color:var(--gris5);text-align:center;margin-top:4px;line-height:1.4">
-        ${partes.join(' · ')} — no se cuentan como remate.
+        No se muestran: ${partes.join(' · ')}.
       </div>`;
     }
     return svg;
