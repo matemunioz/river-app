@@ -407,6 +407,9 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
     # t_seg y partido permiten reproducir el video de la jugada — los consumidores
     # viejos destructuran [x, y, res] e ignoran el resto.
     _partido_nom = nombre_partido(df)
+    # División / fecha / rival del archivo, si vino de la biblioteca. Se adjunta
+    # a cada punto para que el mapa pueda decir contra quién y en qué fecha fue.
+    _meta = df.attrs.get("meta") or {}
 
     def _seg(r):
         s = seg_num(r.get("Start time"))
@@ -438,7 +441,8 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
             rx, ry = coord_remate(r)
             t = _seg(r)
             tipo, carril = _ctx(r)
-            puntos.append([round(rx, 1), round(ry, 1), res, t, _partido_nom, tipo, carril])
+            puntos.append([round(rx, 1), round(ry, 1), res, t, _partido_nom, tipo, carril,
+                           _meta.get("rival"), _meta.get("fecha"), _meta.get("division")])
             if t is not None:
                 ts_vistos.append(t)
         _gl = df[(df["Row"] == cat_goles) & df["x_start"].notna() & df["y_start"].notna()]
@@ -448,7 +452,8 @@ def calcular_colectivas(df: pd.DataFrame) -> dict:
                 continue  # ya está como llegada
             rx, ry = coord_remate(r)
             tipo, carril = _ctx(r)
-            puntos.append([round(rx, 1), round(ry, 1), "gol", t, _partido_nom, tipo, carril])
+            puntos.append([round(rx, 1), round(ry, 1), "gol", t, _partido_nom, tipo, carril,
+                           _meta.get("rival"), _meta.get("fecha"), _meta.get("division")])
         return puntos
 
     remates_riv_puntos = _puntos_remates("Llegadas Rivales", "Goles Rivales")

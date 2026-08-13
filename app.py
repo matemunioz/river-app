@@ -57,6 +57,12 @@ def leer_todos(req):
             raise ValueError(str(e))
         if "Row" not in df.columns:
             raise ValueError(f"El partido '{pid}' no tiene columna 'Row'. ¿Es un export de Sportcode?")
+        # División, fecha y rival del partido, para que los eventos los lleven
+        # encima: al acumular varios partidos, un punto en el mapa no dice nada
+        # si no se sabe contra quién fue.
+        meta = bib.meta_de_id(pid)
+        if meta:
+            df.attrs["meta"] = meta
         dfs.append(_aplicar_tiempo(df, req))
 
     for f in req.files.getlist("archivo"):

@@ -1319,6 +1319,17 @@ function renderResultados(d) {
   //   lado 'riv'  → media cancha propia, nuestro arco a la izquierda (nos rematan)
   //   lado 'prop' → media cancha rival, arco rival a la derecha (rematamos)
   // Los dos quedan espejados para leerlos juntos: ellos atacan ←, nosotros →.
+  // Saca el rival del nombre que trae el export ("7MA vs Rosario Central Fecha 1"
+  // → "Rosario Central"), para los archivos que se suben a mano y no tienen la
+  // metadata de la biblioteca.
+  function rivalDeTimeline(nombre) {
+    if (!nombre) return null;
+    let t = String(nombre).replace(/\.(csv|xlsx?)$/i, '');
+    const partes = t.split(/\s+vs\.?\s+/i);
+    t = partes.length > 1 ? partes[partes.length - 1] : t;
+    return t.replace(/\s*fecha\s*\d+\s*$/i, '').trim() || null;
+  }
+
   function mapaRemates(puntos, lado) {
     const esProp = lado === 'prop';
     if (!puntos.length) {
@@ -1355,8 +1366,12 @@ function renderResultados(d) {
       const res = COL.hasOwnProperty(p[2]) || p[2] === 'gol' ? p[2] : 'sin_dato';
       if (res === 'sin_dato') hayGris++;
       if (res === 'incompleto') hayIncompleto++;
-      // Tooltip: qué fue, cuándo y de qué jugada salió
+      // Tooltip con toda la data del remate: qué fue, contra quién, cuándo y de
+      // qué jugada salió. El rival sale de la biblioteca (p[7]); si el archivo
+      // se subió a mano, se extrae del nombre del partido del propio export.
       const partes = [ (res === 'gol' && !esProp) ? 'Gol rival' : ETIQ[res] ];
+      const rival = p[7] || rivalDeTimeline(p[4]);
+      if (rival) partes.push(`vs ${rival}${p[8] ? ` · F${p[8]}` : ''}`);
       if (p[3] != null) partes.push(`${Math.floor(p[3] / 60)}'${String(Math.floor(p[3] % 60)).padStart(2,'0')}"`);
       const ctx = [p[5], p[6] ? `por ${String(p[6]).toLowerCase()}` : null].filter(Boolean).join(' ');
       if (ctx) partes.push(ctx);

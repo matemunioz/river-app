@@ -207,6 +207,22 @@ def _indice(base: str) -> dict:
     return _INDICE
 
 
+def meta_de_id(pid: str, base: str | None = None) -> dict | None:
+    """División, fecha del fixture y rival de un partido de la biblioteca."""
+    base = base or raiz()
+    if not base:
+        return None
+    for p in listar(base)["partidos"]:
+        if p["id"] == pid:
+            return {
+                "division": p["division"],
+                "rival": p["rival"],
+                "fecha_archivo": p["fecha"],
+                "fecha": fx.fecha_de_rival(p["rival"]) or p["fecha"],
+            }
+    return None
+
+
 def _ruta_de_id(pid: str, base: str | None = None) -> str | None:
     base = base or raiz()
     if not base:
