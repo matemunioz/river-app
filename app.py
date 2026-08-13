@@ -95,6 +95,22 @@ def api_panel():
                         "divisiones": [], "ultimos": []}), 500
 
 
+@app.route("/api/destacados", methods=["GET"])
+def api_destacados():
+    """Jugador destacado de cada división en la última jornada.
+
+    Va aparte del panel porque necesita las estadísticas individuales de cada
+    partido (bastante más caro que el resumen), así que el panel se pinta
+    primero y esto llega después.
+    """
+    import destacados as dst
+    try:
+        fecha = request.args.get("fecha", type=int)
+        return jsonify(dst.de_la_jornada(fecha))
+    except Exception as e:
+        return jsonify({"disponible": False, "error": str(e), "destacados": []}), 500
+
+
 @app.route("/api/biblioteca/refrescar", methods=["POST"])
 def api_biblioteca_refrescar():
     """Vuelve a leer la carpeta desde cero (tras agregar partidos nuevos)."""
