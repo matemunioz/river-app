@@ -1349,17 +1349,19 @@ function renderResultados(d) {
     const AC_W = 6.3,  AC_Y = 29.2, AC_H = 21.6;
     const ARCO_R = 10.5, ARCO_Y0 = 33.6, ARCO_Y1 = 46.4;  // cuerda del semicírculo
     if (esProp) {
-      // arco rival a la derecha
+      // arco rival a la derecha · la medialuna sale del borde del área hacia el
+      // centro de la cancha (izquierda), por eso sweep-flag 0
       svg += `<rect x="${60-AG_W}" y="${AG_Y}" width="${AG_W}" height="${AG_H}" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
       svg += `<rect x="${60-AC_W}" y="${AC_Y}" width="${AC_W}" height="${AC_H}" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
-      svg += `<path d="M ${60-AG_W} ${ARCO_Y0} A ${ARCO_R} ${ARCO_R} 0 0 1 ${60-AG_W} ${ARCO_Y1}" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
+      svg += `<path d="M ${60-AG_W} ${ARCO_Y0} A ${ARCO_R} ${ARCO_R} 0 0 0 ${60-AG_W} ${ARCO_Y1}" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
       svg += `<circle cx="${60-12.6}" cy="40" r="0.5" fill="#3a3a3a"/>`;
       svg += `<text x="3" y="77" fill="#666" font-size="3">atacamos →</text>`;
     } else {
-      // nuestro arco a la izquierda
+      // nuestro arco a la izquierda · la medialuna sale hacia el centro
+      // (derecha), por eso sweep-flag 1
       svg += `<rect x="0" y="${AG_Y}" width="${AG_W}" height="${AG_H}" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
       svg += `<rect x="0" y="${AC_Y}" width="${AC_W}" height="${AC_H}" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
-      svg += `<path d="M ${AG_W} ${ARCO_Y0} A ${ARCO_R} ${ARCO_R} 0 0 0 ${AG_W} ${ARCO_Y1}" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
+      svg += `<path d="M ${AG_W} ${ARCO_Y0} A ${ARCO_R} ${ARCO_R} 0 0 1 ${AG_W} ${ARCO_Y1}" fill="none" stroke="#3a3a3a" stroke-width="0.5"/>`;
       svg += `<circle cx="12.6" cy="40" r="0.5" fill="#3a3a3a"/>`;
       svg += `<text x="57" y="77" fill="#666" font-size="3" text-anchor="end">← atacan ellos</text>`;
     }
@@ -1371,11 +1373,16 @@ function renderResultados(d) {
     // que quedaron sin resultado taggeado se cuentan aparte y se avisan abajo,
     // pero no van a la cancha: no son remates y ensuciaban el mapa.
     let hayGris = 0, hayIncompleto = 0;
-    puntos.filter(p => {
+    const dibujables = puntos.filter(p => {
       if (p[2] === 'sin_dato')   { hayGris++;        return false; }
       if (p[2] === 'incompleto') { hayIncompleto++;  return false; }
       return true;
-    }).forEach(p => {
+    });
+    // Los goles se dibujan ÚLTIMOS para que ningún remate posterior los tape:
+    // en el SVG gana el que se pinta después. Si dos goles caen en el mismo
+    // punto se superponen entre ellos, que no molesta.
+    dibujables.sort((a, b) => (a[2] === 'gol' ? 1 : 0) - (b[2] === 'gol' ? 1 : 0));
+    dibujables.forEach(p => {
       // propios: x viene 60-120 (mitad de ataque) → se lleva a 0-60 del viewBox
       const xRaw = esProp ? p[0] - 60 : p[0];
       const x = Math.min(59, Math.max(1, xRaw));
