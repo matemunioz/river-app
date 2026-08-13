@@ -444,6 +444,36 @@ def notas_tagging():
                     add("1v1o_sin_destino",
                         "1v1 ofensivo ganado sin destino (x_end, y_end) — falta el segundo punto de la jugada")
 
+        # 6) Gol del marcador que no está taggeado a ningún jugador.
+        # Se compara la fila colectiva ("Goles Propios"/"Goles Rivales") contra
+        # los goles individuales cercanos en el tiempo. Cuando falta, el total
+        # de goles del panel no coincide con la suma por jugador, que es
+        # justamente lo que se veía como "arriba dice más que abajo".
+        _goles_ind = []
+        for _, r in sub.iterrows():
+            if "gol" in {sc._norm_tag(t) for t in sc.get_tags(r)}:
+                t = sc.seg_num(r.get("Start time"))
+                if t is not None:
+                    _goles_ind.append((t, str(r["Row"])))
+
+        for cat, lado in (("Goles Propios", "propio"), ("Goles Rivales", "rival")):
+            if lado == "rival":
+                continue  # los goles del rival no se taggean por jugador
+            for _, r in df[df["Row"] == cat].iterrows():
+                t = sc.seg_num(r.get("Start time"))
+                if t is None:
+                    continue
+                cerca = [j for tt, j in _goles_ind if abs(tt - t) <= sc.DEDUPE_GOL_SEG]
+                if not cerca:
+                    issues.append({
+                        "tipo": "gol_sin_jugador",
+                        "partido": partido,
+                        "minuto": sc.seg_a_min(t),
+                        "jugador": "—",
+                        "tags": str(r.get("Remates") or ""),
+                        "detalle": "Gol sin jugador asignado — está en el marcador pero no suma a ningún jugador",
+                    })
+
     # Resumen por tipo
     resumen = {}
     for it in issues:

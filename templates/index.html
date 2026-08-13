@@ -2323,6 +2323,10 @@ function renderColContent() {
   sum.__promedio = promediarJugadores(seleccionados);
   sum.__esColectivo = true;
   sum.__seleccionados = seleccionados;
+  // Con TODO el plantel seleccionado, goles y remates se toman del informe
+  // colectivo: hay goles que no quedan taggeados a ningún jugador, así que la
+  // suma individual da menos que el marcador real.
+  sum.__todos = seleccionados.length === Object.keys(datosJugadores).length;
   // Cargar coords combinadas de TODOS los jugadores seleccionados antes de pintar el HTML
   fetchCoordsMulti(seleccionados).then(coords => {
     coordsActuales = coords || [];
@@ -4896,6 +4900,51 @@ function renderPerdidasPorTipo(ind) {
   return html;
 }
 
+// Bloque de remates. Con TODO el plantel seleccionado los números salen del
+// informe COLECTIVO, no de sumar los individuales: hay goles y remates que no
+// quedan taggeados a ningún jugador, así que la suma da menos que el marcador.
+// Con una selección parcial sí corresponde la suma de esos jugadores.
+function bloqueRemates(ind) {
+  const col = (ind.__esColectivo && ind.__todos && datosActuales) ? datosActuales.colectivas : null;
+  const lp = col ? col.llegadas_prop : null;
+
+  let total, arco, goles, afuera, bloq, efect, fuente = '';
+  if (lp) {
+    arco   = lp.tiros_arco || 0;          // en el tagging un gol también es "Arco"
+    afuera = lp.afuera || 0;
+    bloq   = lp.bloqueado || 0;
+    goles  = (col.goles_propios && col.goles_propios.total) || 0;   // marcador real
+    total  = arco + afuera + bloq;
+    efect  = total ? Math.round(arco / total * 100) : 0;
+    // Si la suma individual no llega al colectivo, es tagging incompleto: hay
+    // goles/remates sin jugador asignado. Se avisa en vez de esconderlo.
+    const gInd = ind.remates_gol || 0, rInd = ind.remates_total || 0;
+    const partes = [];
+    if (goles > gInd) partes.push(`${goles - gInd} gol(es) sin jugador asignado`);
+    if (total > rInd) partes.push(`${total - rInd} remate(s) sin asignar`);
+    fuente = `<div style="font-size:9.5px;color:var(--gris5);padding:4px 0 0;line-height:1.4">
+      Del informe colectivo${partes.length ? ' · ' + partes.join(' · ') : ''}
+    </div>`;
+  } else {
+    total  = ind.remates_total || 0;
+    arco   = ind.remates_arco || 0;
+    goles  = ind.remates_gol || 0;
+    afuera = ind.remates_afuera || 0;
+    bloq   = ind.remates_bloq || 0;
+    efect  = ind.remates_efect || 0;
+  }
+
+  return `
+    <div class="ind-block-title sub">Remates · efectividad ${efect}%</div>
+    ${ir('Total', total, 'remates_total')}
+    ${ir('Al arco', arco, 'remates_arco')}
+    ${ir('Goles', goles, 'remates_gol')}
+    ${ir('Afuera', afuera, 'remates_afuera')}
+    ${ir('Bloqueado', bloq, 'remates_bloq')}
+    ${fuente}
+    ${renderRematesPorSuperficie(ind)}`;
+}
+
 function buildIndHTML(ind) {
   if (!ind || Object.keys(ind).length === 0) return '<p style="color:var(--gris5)">Sin datos individuales para este jugador.</p>';
 
@@ -5099,13 +5148,7 @@ function buildIndHTML(ind) {
       ${ir('Aéreos Def. Perdidos', ind.aereo_dp||0, 'aereo_dp')}
       ${ir('Regate completo', ind.regate_c, 'regate_c')}
       ${ir('Regate incompleto', ind.regate_i, 'regate_i')}
-      <div class="ind-block-title sub">Remates · efectividad ${ind.remates_efect||0}%</div>
-      ${ir('Total', ind.remates_total||0, 'remates_total')}
-      ${ir('Al arco', ind.remates_arco, 'remates_arco')}
-      ${ir('Goles', ind.remates_gol, 'remates_gol')}
-      ${ir('Afuera', ind.remates_afuera, 'remates_afuera')}
-      ${ir('Bloqueado', ind.remates_bloq, 'remates_bloq')}
-      ${renderRematesPorSuperficie(ind)}
+      ${bloqueRemates(ind)}
     </div>
 
     <div class="ind-block">

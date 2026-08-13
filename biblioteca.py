@@ -272,6 +272,48 @@ def limpiar_cache() -> None:
 _RESUMEN: dict = {}
 
 
+def _goles_sin_jugador(full: str, goles_marcador: int) -> int:
+    """Cuántos goles del marcador no tienen un gol individual cerca en el tiempo.
+
+    Lectura liviana: sólo Row, Start time y Ungrouped. Se compara contra los
+    goles taggeados a jugadores con la misma ventana que usa el parser para
+    deduplicar gol↔llegada.
+    """
+    if not goles_marcador:
+        return 0
+    try:
+        import csv
+        tiempos_gol, tiempos_ind = [], []
+        with open(full, newline="", encoding="utf-8", errors="replace") as fh:
+            r = csv.reader(fh)
+            hdr = next(r, None)
+            if hdr is None:
+                return 0
+            try:
+                i_row, i_t = hdr.index("Row"), hdr.index("Start time")
+            except ValueError:
+                return 0
+            i_u = hdr.index("Ungrouped") if "Ungrouped" in hdr else None
+            for fila in r:
+                if len(fila) <= max(i_row, i_t):
+                    continue
+                t = sc.seg_num(fila[i_t])
+                if t is None:
+                    continue
+                if fila[i_row] == "Goles Propios":
+                    tiempos_gol.append(t)
+                elif i_u is not None and len(fila) > i_u:
+                    tags = {x.strip().lower() for x in (fila[i_u] or "").split(",")}
+                    if "gol" in tags and fila[i_row] not in sc.ROWS_NO_JUGADOR:
+                        tiempos_ind.append(t)
+        return sum(
+            1 for tg in tiempos_gol
+            if not any(abs(tg - ti) <= sc.DEDUPE_GOL_SEG for ti in tiempos_ind)
+        )
+    except Exception:
+        return 0
+
+
 def resumen_partido(pid: str, base: str | None = None) -> dict | None:
     """{gf, gc, sit_gol, sit_gol_riv, resultado} de un partido.
 
@@ -319,7 +361,11 @@ def resumen_partido(pid: str, base: str | None = None) -> dict | None:
     res = "G" if gf > gc else "P" if gf < gc else "E"
     out = {"gf": gf, "gc": gc, "sit_gol": sg, "sit_gol_riv": sgr,
            "puntos": 3 if res == "G" else 1 if res == "E" else 0,
-           "resultado": res}
+           "resultado": res,
+           # Goles del marcador que no están taggeados a ningún jugador: el
+           # total del panel no cuadra con la suma por jugador y el gol no se
+           # le acredita a nadie.
+           "goles_sin_jugador": _goles_sin_jugador(full, gf)}
     _RESUMEN[k] = out
     return out
 
@@ -343,10 +389,11 @@ def panel() -> dict:
         acc = divisiones.setdefault(d, {
             "division": d, "partidos": 0, "g": 0, "e": 0, "p": 0,
             "gf": 0, "gc": 0, "ultima_fecha": None, "forma": [], "ids": [],
-            "fechas": [],
+            "fechas": [], "goles_sin_jugador": 0,
         })
         acc["partidos"] += 1
         acc["ids"].append(p["id"])
+        acc["goles_sin_jugador"] += p.get("goles_sin_jugador") or 0
         if p["resultado"]:
             acc["g" if p["resultado"] == "G" else "e" if p["resultado"] == "E" else "p"] += 1
             acc["gf"] += p["gf"] or 0
