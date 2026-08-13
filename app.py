@@ -5,7 +5,7 @@ app.py — River Plate Videoanálisis · Backend Flask
 import io
 from pathlib import Path
 import pandas as pd
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, make_response, render_template, request, send_file
 import parser as sc
 import pdf_gen as pg
 import pdf_individual_v2 as pg_v2
@@ -126,7 +126,13 @@ def api_biblioteca_refrescar():
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    # Sin estos headers el navegador se queda con el HTML viejo y el equipo
+    # sigue viendo errores ya corregidos hasta hacer un refresco forzado.
+    # Toda la app (incluido el JS) vive en este template, así que no se cachea.
+    resp = make_response(render_template("index.html"))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
 
 
 @app.route("/api/analizar", methods=["POST"])
