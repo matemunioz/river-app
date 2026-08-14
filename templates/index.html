@@ -2012,9 +2012,15 @@ function renderIndividual(jugador) {
     coordsActuales = coords || [];
     document.getElementById('ind-content').innerHTML = buildIndHTML(ind);
     iniciarMaquinaEscribir();
-  }).catch(() => {
+  }).catch(err => {
+    // Un error de código acá se veía como "sin datos", que manda a buscar el
+    // problema en el CSV cuando en realidad es la app. Se distinguen los casos.
     coordsActuales = [];
-    document.getElementById('ind-content').innerHTML = `<p style="color:var(--gris5)">Sin datos individuales disponibles para ${jugador}.</p>`;
+    console.error('renderIndividual falló:', err);
+    document.getElementById('ind-content').innerHTML =
+      `<p style="color:var(--gris5)">No se pudo mostrar la ficha de ${jugador}.<br>
+       <span style="font-size:11px;color:var(--rojo)">Error de la aplicación: ${String(err && err.message || err)}</span><br>
+       <span style="font-size:11px">El dato del CSV está bien — avisá con esta línea para que lo corrijan.</span></p>`;
   });
 }
 
@@ -4941,7 +4947,11 @@ function renderPerdidasPorTipo(ind) {
 // informe COLECTIVO, no de sumar los individuales: hay goles y remates que no
 // quedan taggeados a ningún jugador, así que la suma da menos que el marcador.
 // Con una selección parcial sí corresponde la suma de esos jugadores.
-function bloqueRemates(ind) {
+//
+// `ir` llega por parámetro porque vive dentro de buildIndHTML (necesita el
+// semáforo por percentil, que se calcula ahí). Esta función quedó afuera para
+// poder leer datosActuales.colectivas.
+function bloqueRemates(ind, ir) {
   const col = (ind.__esColectivo && ind.__todos && datosActuales) ? datosActuales.colectivas : null;
   const lp = col ? col.llegadas_prop : null;
 
@@ -5185,7 +5195,7 @@ function buildIndHTML(ind) {
       ${ir('Aéreos Def. Perdidos', ind.aereo_dp||0, 'aereo_dp')}
       ${ir('Regate completo', ind.regate_c, 'regate_c')}
       ${ir('Regate incompleto', ind.regate_i, 'regate_i')}
-      ${bloqueRemates(ind)}
+      ${bloqueRemates(ind, ir)}
     </div>
 
     <div class="ind-block">
