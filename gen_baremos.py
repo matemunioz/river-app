@@ -39,7 +39,7 @@ METRICAS = [
     "regate_c", "regate_i",
     "recup_posic", "recup_interv", "recup_tras", "recup_total",
     "perd_pase", "perd_control", "perd_gambeta", "perd_total",
-    "interv_entrada_g", "intercepciones", "bloqueos",
+    "interv_entrada_g", "interv_entrada_p", "intercepciones", "bloqueos",
     "toques_area", "recep_lineas", "recep_espal", "recep_espacio", "ruptura",
     "despeje_or", "despeje_no", "faltas_rec", "faltas_hec",
     "pct_ultimo_tercio", "pct_area", "progresion_media", "distancia_media", "pct_progresivo",
